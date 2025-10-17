@@ -15,7 +15,7 @@ export default async function handler(req, res) {
       await dbx.filesUpload({
         path: '/goals.json',
         contents: JSON.stringify(data),
-        mode: 'overwrite'
+        mode: { '.tag': 'overwrite' }
       });
       res.status(200).json({ success: true });
     } else if (action === 'pull') {
