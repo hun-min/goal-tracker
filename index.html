@@ -508,15 +508,45 @@
 
 
 
-        // Check Dropbox connection status and auto-sync on load
+        // Check Dropbox connection status and smart sync on load
         useEffect(() => {
           if (window.location.protocol === 'file:') return;
           fetch('/api/dropbox/status')
             .then(r => r.json())
-            .then(data => {
+            .then(async data => {
               setDropboxConnected(data.connected);
               if (data.connected) {
-                syncFromDropbox();
+                // Smart sync: compare timestamps
+                try {
+                  const res = await fetch('/api/dropbox/sync', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ action: 'pull' })
+                  });
+                  const dropboxData = await res.json();
+                  
+                  const localData = localStorage.getItem(STORAGE_KEY);
+                  const localParsed = localData ? JSON.parse(localData) : null;
+                  const localTime = localParsed?.savedAt ? new Date(localParsed.savedAt).getTime() : 0;
+                  const dropboxTime = dropboxData?.savedAt ? new Date(dropboxData.savedAt).getTime() : 0;
+                  
+                  if (dropboxTime > localTime) {
+                    // Dropbox is newer, download
+                    if (dropboxData.goals) setGoals(dropboxData.goals);
+                    if (dropboxData.lists) setLists(dropboxData.lists);
+                    if (dropboxData.selectedListId) setSelectedListId(dropboxData.selectedListId);
+                  } else if (localTime > dropboxTime) {
+                    // Local is newer, upload
+                    const payload = { goals, lists, selectedListId };
+                    await fetch('/api/dropbox/sync', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ action: 'push', data: payload })
+                    });
+                  }
+                } catch (err) {
+                  console.error('Smart sync failed:', err);
+                }
               }
             })
             .catch(() => {});
@@ -571,7 +601,7 @@
           }
         };
 
-        const syncFromDropbox = async () => {
+        const syncFromDropbox = async (silent = false) => {
           if (!dropboxConnected) {
             connectDropbox();
             return;
@@ -587,9 +617,9 @@
             if (data.goals) setGoals(data.goals);
             if (data.lists) setLists(data.lists);
             if (data.selectedListId) setSelectedListId(data.selectedListId);
-            alert('Dropbox 다운로드 완료');
+            if (!silent) alert('Dropbox 다운로드 완료');
           } catch (err) {
-            alert('다운로드 실패');
+            if (!silent) alert('다운로드 실패');
           } finally {
             setDropboxSyncing(false);
           }
@@ -662,7 +692,7 @@
           }
         }, [goals.length]);
 
-               // Save lists/selection
+               // Save lists/selection and auto-upload to Dropbox
                useEffect(() => {
           if (lists.length > 0) {
             try {
@@ -670,7 +700,22 @@
               localStorage.setItem(LISTS_STORAGE_KEY, payload);
               
               if (syncTimeoutRef.current) clearTimeout(syncTimeoutRef.current);
-              if (persistence.fileHandleRef?.current) {
+              
+              // Auto-upload to Dropbox if connected
+              if (dropboxConnected) {
+                syncTimeoutRef.current = setTimeout(async () => {
+                  try {
+                    const payload = { goals, lists, selectedListId, savedAt: new Date().toISOString() };
+                    await fetch('/api/dropbox/sync', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ action: 'push', data: payload })
+                    });
+                  } catch (err) {}
+                }, 3000);
+              }
+              // Local file sync if not using Dropbox
+              else if (persistence.fileHandleRef?.current) {
                 syncTimeoutRef.current = setTimeout(async () => {
                   const syncPayload = JSON.stringify({
                     syncedAt: new Date().toISOString(),
@@ -686,7 +731,7 @@
               }
             } catch (err) {}
           }
-        }, [lists, selectedListId, goals, persistence]);
+        }, [lists, selectedListId, goals, persistence, dropboxConnected]);
 
 
 
@@ -1870,28 +1915,32 @@ localStorage.removeItem('timer-state');
                       >
                         🍅{pomodoroMode && <span className="text-[10px]">ON</span>}
                       </button>
-                      <button
-                        onClick={persistence.triggerImport}
-                        className="h-7 w-7 flex items-center justify-center rounded-full bg-cyan-500/80 text-white"
-                        title="가져오기"
-                      >
-                        <Download size={12} />
-                      </button>
-                      <div className="flex items-center gap-1">
-                        {persistence.fileHandleRef?.current ? (
-                          persistence.lastSavedAt && <span className="text-xs text-gray-400">{formatRelativeTime(persistence.lastSavedAt)}</span>
-                        ) : (
-                          <span className="text-xs text-gray-400">파일 연결 안됨</span>
-                        )}
-                        <button
-                          onClick={persistence.triggerSync}
-                          className="h-7 w-7 flex items-center justify-center rounded-full bg-blue-500/80 text-white"
-                          title="동기화"
-                          disabled={persistence.isSyncing}
-                        >
-                          <RefreshCcw size={12} className={persistence.isSyncing ? "animate-spin" : ""} />
-                        </button>
-                      </div>
+                      {!dropboxConnected && (
+                        <>
+                          <button
+                            onClick={persistence.triggerImport}
+                            className="h-7 w-7 flex items-center justify-center rounded-full bg-cyan-500/80 text-white"
+                            title="가져오기"
+                          >
+                            <Download size={12} />
+                          </button>
+                          <div className="flex items-center gap-1">
+                            {persistence.fileHandleRef?.current ? (
+                              persistence.lastSavedAt && <span className="text-xs text-gray-400">{formatRelativeTime(persistence.lastSavedAt)}</span>
+                            ) : (
+                              <span className="text-xs text-gray-400">파일 연결 안됨</span>
+                            )}
+                            <button
+                              onClick={persistence.triggerSync}
+                              className="h-7 w-7 flex items-center justify-center rounded-full bg-blue-500/80 text-white"
+                              title="동기화"
+                              disabled={persistence.isSyncing}
+                            >
+                              <RefreshCcw size={12} className={persistence.isSyncing ? "animate-spin" : ""} />
+                            </button>
+                          </div>
+                        </>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -1937,28 +1986,32 @@ localStorage.removeItem('timer-state');
                     >
                       🍅{pomodoroMode && <span className="text-[10px]">ON</span>}
                     </button>
-                    <button
-                      onClick={persistence.triggerImport}
-                      className="h-7 w-7 flex items-center justify-center rounded-full bg-cyan-500/80 hover:bg-cyan-400 text-white transition"
-                      title="가져오기"
-                    >
-                      <Download size={12} />
-                    </button>
-                    <div className="flex items-center gap-1">
-                      {persistence.fileHandleRef?.current ? (
-                        persistence.lastSavedAt && <span className="text-xs text-gray-400">{formatRelativeTime(persistence.lastSavedAt)}</span>
-                      ) : (
-                        <span className="text-xs text-gray-400">파일 연결 안됨</span>
-                      )}
-                      <button
-                        onClick={persistence.triggerSync}
-                        className="h-7 w-7 flex items-center justify-center rounded-full bg-blue-500/80 hover:bg-blue-400 text-white transition"
-                        title="동기화"
-                        disabled={persistence.isSyncing}
-                      >
-                        <RefreshCcw size={12} className={persistence.isSyncing ? "animate-spin" : ""} />
-                      </button>
-                    </div>
+                    {!dropboxConnected && (
+                      <>
+                        <button
+                          onClick={persistence.triggerImport}
+                          className="h-7 w-7 flex items-center justify-center rounded-full bg-cyan-500/80 hover:bg-cyan-400 text-white transition"
+                          title="가져오기"
+                        >
+                          <Download size={12} />
+                        </button>
+                        <div className="flex items-center gap-1">
+                          {persistence.fileHandleRef?.current ? (
+                            persistence.lastSavedAt && <span className="text-xs text-gray-400">{formatRelativeTime(persistence.lastSavedAt)}</span>
+                          ) : (
+                            <span className="text-xs text-gray-400">파일 연결 안됨</span>
+                          )}
+                          <button
+                            onClick={persistence.triggerSync}
+                            className="h-7 w-7 flex items-center justify-center rounded-full bg-blue-500/80 hover:bg-blue-400 text-white transition"
+                            title="동기화"
+                            disabled={persistence.isSyncing}
+                          >
+                            <RefreshCcw size={12} className={persistence.isSyncing ? "animate-spin" : ""} />
+                          </button>
+                        </div>
+                      </>
+                    )}
                   </div>
 
 
