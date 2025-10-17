@@ -1901,31 +1901,29 @@ localStorage.removeItem('timer-state');
                   <div className="flex items-center justify-between gap-2 mb-1.5">
                     <button onClick={() => setIsSidebarOpen(true)} className="px-2 py-1 rounded border border-gray-700 text-gray-200 text-sm">리스트</button>
                     <div className="flex items-center gap-1">
-                      <div className="flex items-center gap-1">
-                        {dropboxConnected && lastDropboxSync && <span className="text-xs text-gray-400">{formatRelativeTime(lastDropboxSync)}</span>}
-                        <div className="relative">
-                          <button
-                            onClick={(e) => { e.stopPropagation(); setShowDropboxMenu(!showDropboxMenu); }}
-                            className={`h-7 w-7 flex items-center justify-center rounded-full ${dropboxConnected ? 'bg-gradient-to-br from-blue-500 to-cyan-500' : 'bg-gray-700'} text-white relative shadow-lg transition-all hover:scale-105`}
-                            title={dropboxConnected ? `클라우드 연결됨${lastDropboxSync ? ` - ${formatRelativeTime(lastDropboxSync)}` : ''}` : '클라우드 연결 안됨'}
-                          >
-                            📦
-                            {dropboxSyncing && <span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-green-400 rounded-full animate-pulse"></span>}
-                          </button>
-                          {showDropboxMenu && (
-                            <div className="absolute right-0 mt-1 bg-gray-900 border border-gray-700 rounded-md shadow-xl py-0.5 z-50 min-w-[100px]" onClick={(e) => e.stopPropagation()}>
-                              {!dropboxConnected ? (
-                                <button onClick={connectDropbox} className="w-full px-2 py-1 text-left text-[11px] text-gray-200 hover:bg-gray-800">연결</button>
-                              ) : (
-                                <>
-                                  <button onClick={syncToDropbox} disabled={dropboxSyncing} className="w-full px-2 py-1 text-left text-[11px] text-gray-200 hover:bg-gray-800 disabled:opacity-50">{dropboxSyncing ? '⏳' : '↑'}</button>
-                                  <button onClick={syncFromDropbox} disabled={dropboxSyncing} className="w-full px-2 py-1 text-left text-[11px] text-gray-200 hover:bg-gray-800 disabled:opacity-50">{dropboxSyncing ? '⏳' : '↓'}</button>
-                                  <button onClick={disconnectDropbox} className="w-full px-2 py-1 text-left text-[11px] text-red-400 hover:bg-gray-800">해제</button>
-                                </>
-                              )}
-                            </div>
-                          )}
-                        </div>
+                      <div className="relative">
+                        <button
+                          onClick={(e) => { e.stopPropagation(); setShowDropboxMenu(!showDropboxMenu); }}
+                          className={`h-7 w-7 flex items-center justify-center rounded-full ${dropboxConnected ? 'bg-gradient-to-br from-blue-500 to-cyan-500' : 'bg-gray-700'} text-white relative shadow-lg transition-all hover:scale-105`}
+                          title={dropboxConnected ? `클라우드 연결됨${lastDropboxSync ? ` - ${formatRelativeTime(lastDropboxSync)}` : ''}` : '클라우드 연결 안됨'}
+                        >
+                          📦
+                          {dropboxSyncing && <span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-green-400 rounded-full animate-pulse"></span>}
+                        </button>
+                        {showDropboxMenu && (
+                          <div className="absolute right-0 mt-1 bg-gray-900 border border-gray-700 rounded-md shadow-xl py-0.5 z-50 min-w-[100px]" onClick={(e) => e.stopPropagation()}>
+                            {!dropboxConnected ? (
+                              <button onClick={connectDropbox} className="w-full px-2 py-1 text-left text-[11px] text-gray-200 hover:bg-gray-800">연결</button>
+                            ) : (
+                              <>
+                                {lastDropboxSync && <div className="px-2 py-0.5 text-[9px] text-gray-500 border-b border-gray-800">{formatRelativeTime(lastDropboxSync)}</div>}
+                                <button onClick={syncToDropbox} disabled={dropboxSyncing} className="w-full px-2 py-1 text-left text-[11px] text-gray-200 hover:bg-gray-800 disabled:opacity-50">{dropboxSyncing ? '⏳' : '↑'}</button>
+                                <button onClick={syncFromDropbox} disabled={dropboxSyncing} className="w-full px-2 py-1 text-left text-[11px] text-gray-200 hover:bg-gray-800 disabled:opacity-50">{dropboxSyncing ? '⏳' : '↓'}</button>
+                                <button onClick={disconnectDropbox} className="w-full px-2 py-1 text-left text-[11px] text-red-400 hover:bg-gray-800">해제</button>
+                              </>
+                            )}
+                          </div>
+                        )}
                       </div>
                       <div className="px-1.5 py-0.5 bg-gray-800 rounded text-xs text-cyan-400 font-semibold">
                         {formatDuration(getTodayTotalSeconds())}
@@ -1976,31 +1974,29 @@ localStorage.removeItem('timer-state');
                 <div className="max-w-3xl mx-auto">
               <div className="mb-6">
                   <div className="hidden sm:flex items-center justify-end gap-2">
-                    <div className="flex items-center gap-1">
-                      {dropboxConnected && lastDropboxSync && <span className="text-xs text-gray-400">{formatRelativeTime(lastDropboxSync)}</span>}
-                      <div className="relative">
-                        <button
-                          onClick={(e) => { e.stopPropagation(); setShowDropboxMenu(!showDropboxMenu); }}
-                          className={`h-7 w-7 flex items-center justify-center rounded-full ${dropboxConnected ? 'bg-gradient-to-br from-blue-500 to-cyan-500' : 'bg-gray-700 hover:bg-gray-600'} text-white transition-all hover:scale-105 relative shadow-lg`}
-                          title={dropboxConnected ? `클라우드 연결됨${lastDropboxSync ? ` - ${formatRelativeTime(lastDropboxSync)}` : ''}` : '클라우드 연결 안됨'}
-                        >
-                          📦
-                          {dropboxSyncing && <span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-green-400 rounded-full animate-pulse"></span>}
-                        </button>
-                        {showDropboxMenu && (
-                          <div className="absolute right-0 mt-1 bg-gray-900 border border-gray-700 rounded-md shadow-xl py-0.5 z-50 min-w-[100px]" onClick={(e) => e.stopPropagation()}>
-                            {!dropboxConnected ? (
-                              <button onClick={connectDropbox} className="w-full px-2 py-1 text-left text-[11px] text-gray-200 hover:bg-gray-800">연결</button>
-                            ) : (
-                              <>
-                                <button onClick={syncToDropbox} disabled={dropboxSyncing} className="w-full px-2 py-1 text-left text-[11px] text-gray-200 hover:bg-gray-800 disabled:opacity-50">{dropboxSyncing ? '⏳' : '↑'}</button>
-                                <button onClick={syncFromDropbox} disabled={dropboxSyncing} className="w-full px-2 py-1 text-left text-[11px] text-gray-200 hover:bg-gray-800 disabled:opacity-50">{dropboxSyncing ? '⏳' : '↓'}</button>
-                                <button onClick={disconnectDropbox} className="w-full px-2 py-1 text-left text-[11px] text-red-400 hover:bg-gray-800">해제</button>
-                              </>
-                            )}
-                          </div>
-                        )}
-                      </div>
+                    <div className="relative">
+                      <button
+                        onClick={(e) => { e.stopPropagation(); setShowDropboxMenu(!showDropboxMenu); }}
+                        className={`h-7 w-7 flex items-center justify-center rounded-full ${dropboxConnected ? 'bg-gradient-to-br from-blue-500 to-cyan-500' : 'bg-gray-700 hover:bg-gray-600'} text-white transition-all hover:scale-105 relative shadow-lg`}
+                        title={dropboxConnected ? `클라우드 연결됨${lastDropboxSync ? ` - ${formatRelativeTime(lastDropboxSync)}` : ''}` : '클라우드 연결 안됨'}
+                      >
+                        📦
+                        {dropboxSyncing && <span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-green-400 rounded-full animate-pulse"></span>}
+                      </button>
+                      {showDropboxMenu && (
+                        <div className="absolute right-0 mt-1 bg-gray-900 border border-gray-700 rounded-md shadow-xl py-0.5 z-50 min-w-[100px]" onClick={(e) => e.stopPropagation()}>
+                          {!dropboxConnected ? (
+                            <button onClick={connectDropbox} className="w-full px-2 py-1 text-left text-[11px] text-gray-200 hover:bg-gray-800">연결</button>
+                          ) : (
+                            <>
+                              {lastDropboxSync && <div className="px-2 py-0.5 text-[9px] text-gray-500 border-b border-gray-800">{formatRelativeTime(lastDropboxSync)}</div>}
+                              <button onClick={syncToDropbox} disabled={dropboxSyncing} className="w-full px-2 py-1 text-left text-[11px] text-gray-200 hover:bg-gray-800 disabled:opacity-50">{dropboxSyncing ? '⏳' : '↑'}</button>
+                              <button onClick={syncFromDropbox} disabled={dropboxSyncing} className="w-full px-2 py-1 text-left text-[11px] text-gray-200 hover:bg-gray-800 disabled:opacity-50">{dropboxSyncing ? '⏳' : '↓'}</button>
+                              <button onClick={disconnectDropbox} className="w-full px-2 py-1 text-left text-[11px] text-red-400 hover:bg-gray-800">해제</button>
+                            </>
+                          )}
+                        </div>
+                      )}
                     </div>
                     <div className="px-2 py-1 bg-gray-800 rounded text-xs text-cyan-400 font-semibold">
                       오늘 {formatDuration(getTodayTotalSeconds())}
