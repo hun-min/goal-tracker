@@ -27,7 +27,7 @@ export default async function handler(req, res) {
       } catch (downloadError) {
         console.error('Download error:', downloadError);
         if (downloadError.status === 409) {
-          res.status(200).json({ goals: [], lists: [{ id: 'default', name: '기본함' }], selectedListId: 'default' });
+          res.status(404).json({ error: 'File not found', message: 'Dropbox에 파일이 없습니다. 먼저 업로드하세요.' });
         } else {
           res.status(500).json({ error: 'Download failed', message: downloadError.message, status: downloadError.status });
         }
