@@ -4,6 +4,8 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Targeted time</title>
+    <link rel="manifest" href="/manifest.json" />
+    <meta name="theme-color" content="#000000" />
     <link
       rel="stylesheet"
       href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css"
@@ -506,12 +508,17 @@
 
 
 
-        // Check Dropbox connection status
+        // Check Dropbox connection status and auto-sync on load
         useEffect(() => {
           if (window.location.protocol === 'file:') return;
           fetch('/api/dropbox/status')
             .then(r => r.json())
-            .then(data => setDropboxConnected(data.connected))
+            .then(data => {
+              setDropboxConnected(data.connected);
+              if (data.connected) {
+                syncFromDropbox();
+              }
+            })
             .catch(() => {});
         }, []);
 
