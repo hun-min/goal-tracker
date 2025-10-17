@@ -2006,14 +2006,14 @@ localStorage.removeItem('timer-state');
                       className="h-7 w-7 flex items-center justify-center rounded-full bg-gradient-to-br from-purple-500 to-pink-500 text-white transition-all hover:scale-105 text-xs shadow-lg"
                       title="주간 리포트"
                     >
-                      📈
+                      📊
                     </button>
                     <button
                       onClick={() => setPomodoroMode(!pomodoroMode)}
                       className={`${pomodoroMode ? 'px-1.5 py-0.5 bg-gradient-to-br from-orange-500 to-red-500 text-white shadow-lg' : 'h-7 w-7 bg-gray-700 hover:bg-gray-600'} flex items-center gap-0.5 justify-center rounded-full transition-all hover:scale-105 text-xs`}
                       title="포모도로"
                     >
-                      ⏱️{pomodoroMode && <span className="text-[10px]">ON</span>}
+                      🍅{pomodoroMode && <span className="text-[10px]">ON</span>}
                     </button>
                     {!dropboxConnected && (
                       <>
