@@ -21,8 +21,7 @@ export default async function handler(req, res) {
     } else if (action === 'pull') {
       try {
         const response = await dbx.filesDownload({ path: '/goals.json' });
-        const fileBlob = response.result.fileBlob;
-        const fileContent = await fileBlob.text();
+        const fileContent = response.result.fileBinary.toString('utf-8');
         const parsed = JSON.parse(fileContent);
         res.status(200).json(parsed);
       } catch (downloadError) {
