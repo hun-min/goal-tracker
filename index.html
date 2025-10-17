@@ -489,7 +489,7 @@
         const [cardsEditMode, setCardsEditMode] = useState(false);
         const [touchStartX, setTouchStartX] = useState(null);
         const [touchStartY, setTouchStartY] = useState(null);
-        const [showFileConnectPrompt, setShowFileConnectPrompt] = useState(false);
+
         const [contextMenu, setContextMenu] = useState(null);
         const [listContextMenu, setListContextMenu] = useState(null);
         const [todoContextMenu, setTodoContextMenu] = useState(null);
@@ -504,14 +504,7 @@
         const cardRefs = useRef([]);
         const syncTimeoutRef = useRef(null);
 
-        // Show file connect prompt on first load
-        useEffect(() => {
-          const shown = localStorage.getItem(FILE_CONNECT_SHOWN_KEY);
-          if (!shown && !persistence.fileHandleRef?.current) {
-            setTimeout(() => setShowFileConnectPrompt(true), 1000);
-            localStorage.setItem(FILE_CONNECT_SHOWN_KEY, "true");
-          }
-        }, []);
+
 
         // Check Dropbox connection status
         useEffect(() => {
@@ -1717,18 +1710,7 @@ localStorage.removeItem('timer-state');
                 {persistence.statusMessage}
               </div>
             )}
-            {showFileConnectPrompt && (
-              <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4" onClick={() => setShowFileConnectPrompt(false)}>
-                <div className="bg-gray-800 rounded-lg p-4 max-w-md w-full" onClick={(e) => e.stopPropagation()}>
-                  <h2 className="text-sm font-bold text-white mb-3">📁 파일 연결</h2>
-                  <p className="text-xs text-gray-300 mb-3">데이터를 자동으로 동기화하려면 파일을 연결하세요. 연결하지 않으면 브라우저 로컬에만 저장됩니다.</p>
-                  <div className="flex gap-2">
-                    <button onClick={() => { persistence.triggerSync(); setShowFileConnectPrompt(false); }} className="flex-1 px-3 py-1.5 bg-blue-500 hover:bg-blue-400 text-white rounded text-sm transition">파일 연결</button>
-                    <button onClick={() => setShowFileConnectPrompt(false)} className="flex-1 px-3 py-1.5 bg-gray-600 hover:bg-gray-500 text-white rounded text-sm transition">나중에</button>
-                  </div>
-                </div>
-              </div>
-            )}
+
             {showShortcuts && (
               <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4" onClick={() => setShowShortcuts(false)}>
                 <div className="bg-gray-800 rounded-lg p-4 max-w-md w-full" onClick={(e) => e.stopPropagation()}>
@@ -1797,7 +1779,7 @@ localStorage.removeItem('timer-state');
                       )}
                     </div>
                   ))}
-                </div>}
+                </div>
                 <div className="hidden sm:flex justify-start pt-2 border-t border-gray-800">
                   <button
                     onClick={(e) => { e.stopPropagation(); setShowShortcuts(true); }}
