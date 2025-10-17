@@ -602,14 +602,18 @@
           setDropboxSyncing(true);
           try {
             const payload = { goals, lists, selectedListId, savedAt: new Date().toISOString() };
-            await fetch('/api/dropbox/sync', {
+            console.log('[UPLOAD] Sending to Dropbox:', payload);
+            const res = await fetch('/api/dropbox/sync', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ action: 'push', data: payload })
             });
+            const result = await res.json();
+            console.log('[UPLOAD] Response:', result);
             setLastDropboxSync(Date.now());
             alert('✓ Dropbox 업로드 완료');
           } catch (err) {
+            console.error('[UPLOAD] Error:', err);
             alert('✗ 업로드 실패: ' + (err.message || '알 수 없는 오류'));
           } finally {
             setDropboxSyncing(false);
@@ -621,6 +625,7 @@
             connectDropbox();
             return;
           }
+          console.log('[DOWNLOAD] Current local data BEFORE download:', { goals, lists, selectedListId });
           setDropboxSyncing(true);
           try {
             const res = await fetch('/api/dropbox/sync', {
@@ -628,19 +633,22 @@
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ action: 'pull' })
             });
+            console.log('[DOWNLOAD] Response status:', res.status);
             const data = await res.json();
+            console.log('[DOWNLOAD] Received from Dropbox:', data);
             if (data.error) {
-              console.error('Dropbox download error:', data);
+              console.error('[DOWNLOAD] Error in response:', data);
               if (!silent) alert(`✗ ${data.message || data.error}`);
               return;
             }
+            console.log('[DOWNLOAD] Applying data - goals:', data.goals?.length, 'lists:', data.lists?.length);
             if (data.goals) setGoals(data.goals);
             if (data.lists) setLists(data.lists);
             if (data.selectedListId) setSelectedListId(data.selectedListId);
             setLastDropboxSync(Date.now());
             if (!silent) alert('✓ Dropbox 다운로드 완료');
           } catch (err) {
-            console.error('Dropbox sync error:', err);
+            console.error('[DOWNLOAD] Exception:', err);
             if (!silent) alert('✗ 다운로드 실패: ' + (err.message || '알 수 없는 오류'));
           } finally {
             setDropboxSyncing(false);
