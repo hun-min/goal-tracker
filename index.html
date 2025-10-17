@@ -444,6 +444,7 @@
         const [dropboxConnected, setDropboxConnected] = useState(false);
         const [dropboxSyncing, setDropboxSyncing] = useState(false);
         const [showDropboxMenu, setShowDropboxMenu] = useState(false);
+        const [lastDropboxSync, setLastDropboxSync] = useState(null);
         const [selectedCardIndex, setSelectedCardIndex] = useState(0);
         const [selectedFieldIndex, setSelectedFieldIndex] = useState(-1);
         const [showShortcuts, setShowShortcuts] = useState(false);
@@ -511,49 +512,54 @@
         // Check Dropbox connection status and smart sync on load
         useEffect(() => {
           if (window.location.protocol === 'file:') return;
+          
+          // Non-blocking: check connection first
           fetch('/api/dropbox/status')
             .then(r => r.json())
-            .then(async data => {
+            .then(data => {
               setDropboxConnected(data.connected);
+              
+              // Smart sync in background (non-blocking)
               if (data.connected) {
-                // Smart sync: compare timestamps
-                try {
-                  const res = await fetch('/api/dropbox/sync', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ action: 'pull' })
-                  });
-                  const dropboxData = await res.json();
-                  
-                  const localData = localStorage.getItem(STORAGE_KEY);
-                  const localParsed = localData ? JSON.parse(localData) : null;
-                  const localTime = localParsed?.savedAt ? new Date(localParsed.savedAt).getTime() : 0;
-                  const dropboxTime = dropboxData?.savedAt ? new Date(dropboxData.savedAt).getTime() : 0;
-                  
-                  if (dropboxTime > localTime) {
-                    // Dropbox is newer, download
-                    if (dropboxData.goals) setGoals(dropboxData.goals);
-                    if (dropboxData.lists) setLists(dropboxData.lists);
-                    if (dropboxData.selectedListId) setSelectedListId(dropboxData.selectedListId);
-                  } else if (localTime > dropboxTime && localParsed?.goals) {
-                    // Local is newer, upload
-                    const localListsData = localStorage.getItem(LISTS_STORAGE_KEY);
-                    const localListsParsed = localListsData ? JSON.parse(localListsData) : {};
-                    const payload = { 
-                      goals: localParsed.goals, 
-                      lists: localListsParsed.lists || [], 
-                      selectedListId: localListsParsed.selectedListId,
-                      savedAt: localParsed.savedAt
-                    };
-                    await fetch('/api/dropbox/sync', {
+                setTimeout(async () => {
+                  try {
+                    const res = await fetch('/api/dropbox/sync', {
                       method: 'POST',
                       headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({ action: 'push', data: payload })
+                      body: JSON.stringify({ action: 'pull' })
                     });
+                    const dropboxData = await res.json();
+                    
+                    const localData = localStorage.getItem(STORAGE_KEY);
+                    const localParsed = localData ? JSON.parse(localData) : null;
+                    const localTime = localParsed?.savedAt ? new Date(localParsed.savedAt).getTime() : 0;
+                    const dropboxTime = dropboxData?.savedAt ? new Date(dropboxData.savedAt).getTime() : 0;
+                    
+                    if (dropboxTime > localTime) {
+                      if (dropboxData.goals) setGoals(dropboxData.goals);
+                      if (dropboxData.lists) setLists(dropboxData.lists);
+                      if (dropboxData.selectedListId) setSelectedListId(dropboxData.selectedListId);
+                      setLastDropboxSync(Date.now());
+                    } else if (localTime > dropboxTime && localParsed?.goals) {
+                      const localListsData = localStorage.getItem(LISTS_STORAGE_KEY);
+                      const localListsParsed = localListsData ? JSON.parse(localListsData) : {};
+                      const payload = { 
+                        goals: localParsed.goals, 
+                        lists: localListsParsed.lists || [], 
+                        selectedListId: localListsParsed.selectedListId,
+                        savedAt: localParsed.savedAt
+                      };
+                      await fetch('/api/dropbox/sync', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ action: 'push', data: payload })
+                      });
+                      setLastDropboxSync(Date.now());
+                    }
+                  } catch (err) {
+                    console.error('Smart sync failed:', err);
                   }
-                } catch (err) {
-                  console.error('Smart sync failed:', err);
-                }
+                }, 100);
               }
             })
             .catch(() => {});
@@ -594,15 +600,16 @@
           }
           setDropboxSyncing(true);
           try {
-            const payload = { goals, lists, selectedListId };
+            const payload = { goals, lists, selectedListId, savedAt: new Date().toISOString() };
             await fetch('/api/dropbox/sync', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ action: 'push', data: payload })
             });
-            alert('Dropbox 업로드 완료');
+            setLastDropboxSync(Date.now());
+            alert('✓ Dropbox 업로드 완료');
           } catch (err) {
-            alert('업로드 실패');
+            alert('✗ 업로드 실패: ' + (err.message || '알 수 없는 오류'));
           } finally {
             setDropboxSyncing(false);
           }
@@ -624,9 +631,10 @@
             if (data.goals) setGoals(data.goals);
             if (data.lists) setLists(data.lists);
             if (data.selectedListId) setSelectedListId(data.selectedListId);
-            if (!silent) alert('Dropbox 다운로드 완료');
+            setLastDropboxSync(Date.now());
+            if (!silent) alert('✓ Dropbox 다운로드 완료');
           } catch (err) {
-            if (!silent) alert('다운로드 실패');
+            if (!silent) alert('✗ 다운로드 실패: ' + (err.message || '알 수 없는 오류'));
           } finally {
             setDropboxSyncing(false);
           }
@@ -656,9 +664,8 @@
           return () => clearInterval(interval);
         }, [activeTimer, timerStartTime]);
 
-        // Load lists/selection from separate storage
-               // Load and manage lists/selection
-               useEffect(() => {
+        // Load lists/selection from separate storage (only once on mount)
+        useEffect(() => {
           try {
             const raw = localStorage.getItem(LISTS_STORAGE_KEY);
             let loadedLists = [];
@@ -686,18 +693,13 @@
 
             setLists(loadedLists);
             setSelectedListId(loadedSelectedId);
-
-            // Migrate goals without listId
-            if (goals.length > 0) {
-              setGoals((prev) => prev.map((g) => ({ ...g, listId: g.listId || "default" })));
-            }
           } catch (err) {
             // Fallback to default
             const defaultList = { id: "default", name: "기본함" };
             setLists([defaultList]);
             setSelectedListId("default");
           }
-        }, [goals.length]);
+        }, []);
 
                // Save lists/selection and auto-upload to Dropbox
                useEffect(() => {
@@ -718,6 +720,7 @@
                       headers: { 'Content-Type': 'application/json' },
                       body: JSON.stringify({ action: 'push', data: payload })
                     });
+                    setLastDropboxSync(Date.now());
                   } catch (err) {}
                 }, 3000);
               }
@@ -1886,19 +1889,21 @@ localStorage.removeItem('timer-state');
                       <div className="relative">
                         <button
                           onClick={(e) => { e.stopPropagation(); setShowDropboxMenu(!showDropboxMenu); }}
-                          className={`h-7 w-7 flex items-center justify-center rounded-full ${dropboxConnected ? 'bg-blue-500/80' : 'bg-gray-700'} text-white`}
-                          title="Dropbox"
+                          className={`h-7 w-7 flex items-center justify-center rounded-full ${dropboxConnected ? 'bg-blue-500/80' : 'bg-gray-700'} text-white relative`}
+                          title={dropboxConnected ? `Dropbox 연결됨${lastDropboxSync ? ` - ${formatRelativeTime(lastDropboxSync)}` : ''}` : 'Dropbox 연결 안됨'}
                         >
                           📦
+                          {dropboxSyncing && <span className="absolute -top-1 -right-1 w-2 h-2 bg-green-400 rounded-full animate-pulse"></span>}
                         </button>
                         {showDropboxMenu && (
-                          <div className="absolute right-0 mt-1 bg-gray-800 border border-gray-700 rounded-lg shadow-lg py-1 z-50 min-w-[120px]" onClick={(e) => e.stopPropagation()}>
+                          <div className="absolute right-0 mt-1 bg-gray-800 border border-gray-700 rounded-lg shadow-lg py-1 z-50 min-w-[140px]" onClick={(e) => e.stopPropagation()}>
                             {!dropboxConnected ? (
                               <button onClick={connectDropbox} className="w-full px-3 py-1.5 text-left text-xs text-gray-200 hover:bg-gray-700">연결</button>
                             ) : (
                               <>
-                                <button onClick={syncToDropbox} disabled={dropboxSyncing} className="w-full px-3 py-1.5 text-left text-xs text-gray-200 hover:bg-gray-700">업로드</button>
-                                <button onClick={syncFromDropbox} disabled={dropboxSyncing} className="w-full px-3 py-1.5 text-left text-xs text-gray-200 hover:bg-gray-700">다운로드</button>
+                                {lastDropboxSync && <div className="px-3 py-1 text-[10px] text-gray-500 border-b border-gray-700">마지막 동기화: {formatRelativeTime(lastDropboxSync)}</div>}
+                                <button onClick={syncToDropbox} disabled={dropboxSyncing} className="w-full px-3 py-1.5 text-left text-xs text-gray-200 hover:bg-gray-700 disabled:opacity-50">{dropboxSyncing ? '동기화 중...' : '업로드'}</button>
+                                <button onClick={syncFromDropbox} disabled={dropboxSyncing} className="w-full px-3 py-1.5 text-left text-xs text-gray-200 hover:bg-gray-700 disabled:opacity-50">{dropboxSyncing ? '동기화 중...' : '다운로드'}</button>
                                 <button onClick={disconnectDropbox} className="w-full px-3 py-1.5 text-left text-xs text-red-400 hover:bg-gray-700">연결 해제</button>
                               </>
                             )}
@@ -1957,19 +1962,21 @@ localStorage.removeItem('timer-state');
                     <div className="relative">
                       <button
                         onClick={(e) => { e.stopPropagation(); setShowDropboxMenu(!showDropboxMenu); }}
-                        className={`h-7 w-7 flex items-center justify-center rounded-full ${dropboxConnected ? 'bg-blue-500/80 hover:bg-blue-400' : 'bg-gray-700 hover:bg-gray-600'} text-white transition`}
-                        title="Dropbox"
+                        className={`h-7 w-7 flex items-center justify-center rounded-full ${dropboxConnected ? 'bg-blue-500/80 hover:bg-blue-400' : 'bg-gray-700 hover:bg-gray-600'} text-white transition relative`}
+                        title={dropboxConnected ? `Dropbox 연결됨${lastDropboxSync ? ` - ${formatRelativeTime(lastDropboxSync)}` : ''}` : 'Dropbox 연결 안됨'}
                       >
                         📦
+                        {dropboxSyncing && <span className="absolute -top-1 -right-1 w-2 h-2 bg-green-400 rounded-full animate-pulse"></span>}
                       </button>
                       {showDropboxMenu && (
-                        <div className="absolute right-0 mt-1 bg-gray-800 border border-gray-700 rounded-lg shadow-lg py-1 z-50 min-w-[120px]" onClick={(e) => e.stopPropagation()}>
+                        <div className="absolute right-0 mt-1 bg-gray-800 border border-gray-700 rounded-lg shadow-lg py-1 z-50 min-w-[140px]" onClick={(e) => e.stopPropagation()}>
                           {!dropboxConnected ? (
                             <button onClick={connectDropbox} className="w-full px-3 py-1.5 text-left text-xs text-gray-200 hover:bg-gray-700">연결</button>
                           ) : (
                             <>
-                              <button onClick={syncToDropbox} disabled={dropboxSyncing} className="w-full px-3 py-1.5 text-left text-xs text-gray-200 hover:bg-gray-700">업로드</button>
-                              <button onClick={syncFromDropbox} disabled={dropboxSyncing} className="w-full px-3 py-1.5 text-left text-xs text-gray-200 hover:bg-gray-700">다운로드</button>
+                              {lastDropboxSync && <div className="px-3 py-1 text-[10px] text-gray-500 border-b border-gray-700">마지막 동기화: {formatRelativeTime(lastDropboxSync)}</div>}
+                              <button onClick={syncToDropbox} disabled={dropboxSyncing} className="w-full px-3 py-1.5 text-left text-xs text-gray-200 hover:bg-gray-700 disabled:opacity-50">{dropboxSyncing ? '동기화 중...' : '업로드'}</button>
+                              <button onClick={syncFromDropbox} disabled={dropboxSyncing} className="w-full px-3 py-1.5 text-left text-xs text-gray-200 hover:bg-gray-700 disabled:opacity-50">{dropboxSyncing ? '동기화 중...' : '다운로드'}</button>
                               <button onClick={disconnectDropbox} className="w-full px-3 py-1.5 text-left text-xs text-red-400 hover:bg-gray-700">연결 해제</button>
                             </>
                           )}
