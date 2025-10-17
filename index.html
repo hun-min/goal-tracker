@@ -1,0 +1,2731 @@
+<!DOCTYPE html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Targeted time</title>
+    <link
+      rel="stylesheet"
+      href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css"
+    />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+KR:wght@400;500;700&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      body {
+        font-family: "Inter", "Noto Sans KR", system-ui, -apple-system, BlinkMacSystemFont,
+          "Segoe UI", sans-serif;
+        background: #000;
+      }
+
+      .card-blur {
+        background: rgba(15, 23, 42, 0.72);
+        backdrop-filter: blur(12px);
+        border: 1px solid rgba(148, 163, 184, 0.2);
+      }
+      
+      .card-complete {
+        background: #022c22 !important;
+        border: 1px solid #064e3b !important;
+        backdrop-filter: none !important;
+      }
+
+      .card-today-pending {
+        background: rgba(59, 130, 246, 0.1) !important;
+        border: 1px solid rgba(59, 130, 246, 0.3) !important;
+      }
+
+      @keyframes pulse-glow {
+        0%, 100% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.7); }
+        50% { box-shadow: 0 0 0 4px rgba(34, 197, 94, 0); }
+      }
+
+      .pulse-start {
+        animation: pulse-glow 2s infinite;
+      }
+
+      @keyframes confetti {
+        0% { transform: translateY(0) rotate(0deg); opacity: 1; }
+        100% { transform: translateY(100vh) rotate(720deg); opacity: 0; }
+      }
+
+      .confetti {
+        position: fixed;
+        width: 10px;
+        height: 10px;
+        z-index: 9999;
+        animation: confetti 3s ease-out forwards;
+        pointer-events: none;
+      }
+
+      input::-webkit-inner-spin-button,
+      input::-webkit-outer-spin-button {
+        -webkit-appearance: none;
+        margin: 0;
+      }
+
+      * {
+        -webkit-tap-highlight-color: transparent;
+        -webkit-touch-callout: none;
+      }
+
+      .no-drag {
+        -webkit-user-drag: none;
+        user-drag: none;
+      }
+
+      @media (max-width: 640px) {
+        .ring-2, .ring-blue-400, .ring-yellow-400 {
+          box-shadow: none !important;
+          outline: none !important;
+        }
+      }
+    </style>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  </head>
+  <body class="min-h-screen text-gray-100">
+    <div id="root"></div>
+
+    <script type="text/babel" data-type="module">
+      import React, { useState, useEffect, useRef, useCallback } from "https://esm.sh/react@18";
+      import { createRoot } from "https://esm.sh/react-dom@18/client";
+      import {
+        Plus,
+        Trash2,
+        Play,
+        Pause,
+        Upload,
+        Download,
+        RefreshCcw,
+        Info,
+        ChevronUp,
+        ChevronDown,
+        X,
+        Clock,
+        GripVertical,
+        Undo2
+      } from "https://esm.sh/lucide-react@0.368.0";
+
+      const STORAGE_KEY = "goal-tracker-data-v1";
+      const LISTS_STORAGE_KEY = "goal-tracker-lists-v1";
+      const EXPORT_FILE_NAME = "goal-tracker-data.json";
+      const DROPBOX_SYNC_PATH = "/Apps/GoalTracker/goals.json";
+      const FILE_CONNECT_SHOWN_KEY = "goal-tracker-file-connect-shown";
+
+      const formatRelativeTime = (timestamp) => {
+        if (!timestamp) return "";
+        const diff = Math.max(0, Date.now() - timestamp);
+        if (diff < 30000) return "방금 전";
+        const minutes = Math.floor(diff / 60000);
+        if (minutes < 60) return `${minutes}분 전`;
+        const hours = Math.floor(minutes / 60);
+        if (hours < 24) return `${hours}시간 전`;
+        const days = Math.floor(hours / 24);
+        if (days === 1) return "어제";
+        return `${days}일 전`;
+      };
+
+      function useGoalDataPersistence({ goals, setGoals, lists, setLists, selectedListId, setSelectedListId }) {
+        const fileInputRef = useRef(null);
+        const fileHandleRef = useRef(null);
+        const supportsFilePicker = useRef(
+          typeof window !== "undefined" && typeof window.showSaveFilePicker === "function"
+        ).current;
+        const [statusMessage, setStatusMessage] = useState("로컬에 자동 저장됩니다.");
+        const [lastSavedAt, setLastSavedAt] = useState(null);
+        const [lastLoadedAt, setLastLoadedAt] = useState(null);
+        const [isSyncing, setIsSyncing] = useState(false);
+        const hasInitializedRef = useRef(false);
+        const syncTimeoutRef = useRef(null);
+
+        useEffect(() => {
+          try {
+            const stored = localStorage.getItem(STORAGE_KEY);
+            if (stored) {
+              const parsed = JSON.parse(stored);
+              if (parsed && Array.isArray(parsed.goals)) {
+                setGoals(parsed.goals);
+                setStatusMessage("로컬 저장된 데이터를 불러왔습니다.");
+                setLastLoadedAt(Date.now());
+              }
+            }
+          } catch (err) {
+            console.error("[sync] load failed", err);
+            setStatusMessage("저장된 데이터를 불러오지 못했습니다.");
+          } finally {
+            hasInitializedRef.current = true;
+          }
+        }, [setGoals]);
+
+        useEffect(() => {
+          if (!hasInitializedRef.current) return;
+          try {
+            const payload = JSON.stringify({ goals, savedAt: new Date().toISOString() });
+            localStorage.setItem(STORAGE_KEY, payload);
+            setLastSavedAt(Date.now());
+            setStatusMessage("변경 사항을 자동 저장했습니다.");
+            
+            if (syncTimeoutRef.current) clearTimeout(syncTimeoutRef.current);
+            if (fileHandleRef.current) {
+              syncTimeoutRef.current = setTimeout(async () => {
+                const syncPayload = JSON.stringify({
+                  syncedAt: new Date().toISOString(),
+                  goals,
+                  lists: JSON.parse(localStorage.getItem(LISTS_STORAGE_KEY) || '{}').lists || [],
+                  selectedListId: JSON.parse(localStorage.getItem(LISTS_STORAGE_KEY) || '{}').selectedListId
+                }, null, 2);
+                const synced = await writeFileHandle(fileHandleRef.current, syncPayload);
+                if (!synced && !fileHandleRef.current) {
+                  setStatusMessage("✗ 파일 연결 만료. 동기화 버튼을 눌러주세요.");
+                }
+              }, 3000);
+            }
+          } catch (err) {
+            console.error("[sync] save failed", err);
+            setStatusMessage("자동 저장에 실패했습니다. 저장 공간을 확인해주세요.");
+          }
+        }, [goals, lists, selectedListId, writeFileHandle]);
+
+        const triggerImport = useCallback(() => {
+          fileInputRef.current?.click();
+        }, []);
+
+        const writeFileHandle = useCallback(async (handle, contents) => {
+          if (!handle?.createWritable) return false;
+          try {
+            const permissionOpts = { mode: "readwrite" };
+            let permission = handle.queryPermission ? await handle.queryPermission(permissionOpts) : "prompt";
+            if (permission !== "granted") {
+              permission = handle.requestPermission ? await handle.requestPermission(permissionOpts) : "granted";
+            }
+            if (permission !== "granted") return false;
+            const writable = await handle.createWritable();
+            await writable.write(contents);
+            await writable.close();
+            return true;
+          } catch (err) {
+            console.error("[sync] write failed", err);
+            if (err.name === "InvalidStateError") {
+              fileHandleRef.current = null;
+            }
+            return false;
+          }
+        }, []);
+
+        const handleFileSelected = useCallback(
+          (event) => {
+            const file = event.target.files?.[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = () => {
+              try {
+                const text = reader.result;
+                const parsed = JSON.parse(text);
+                                if (parsed && Array.isArray(parsed.goals)) {
+                  setGoals(parsed.goals);
+
+                  // Handle lists - if imported file has lists, use them, otherwise keep current
+                  if (parsed.lists && Array.isArray(parsed.lists) && parsed.lists.length > 0) {
+                    setLists(parsed.lists);
+                    if (parsed.selectedListId) {
+                      setSelectedListId(parsed.selectedListId);
+                    }
+                  } else {
+                    // No lists in imported file, keep current lists and selection
+                    // Don't change lists state
+                  }
+
+                  localStorage.setItem(
+                    STORAGE_KEY,
+                    JSON.stringify({ goals: parsed.goals, importedFrom: file.name, importedAt: new Date().toISOString() })
+                  );
+
+                  // Save lists data only if we have lists to save
+                  if (parsed.lists && Array.isArray(parsed.lists)) {
+                    localStorage.setItem(
+                      LISTS_STORAGE_KEY,
+                      JSON.stringify({
+                        lists: parsed.lists,
+                        selectedListId: parsed.selectedListId,
+                        importedFrom: file.name,
+                        importedAt: new Date().toISOString()
+                      })
+                    );
+                  }
+
+                  setStatusMessage(`${file.name}에서 데이터를 불러왔습니다.`);
+                  setLastLoadedAt(Date.now());
+                } else {
+                  setStatusMessage("선택한 파일에 목표 데이터가 없습니다.");
+                }
+              } catch (err) {
+                console.error("[sync] import failed", err);
+                setStatusMessage("파일을 읽는 중 문제가 발생했습니다.");
+              } finally {
+                event.target.value = "";
+              }
+            };
+            reader.readAsText(file, "utf-8");
+          },
+          [setGoals, setLists, setSelectedListId]
+        );
+
+        const triggerExport = useCallback(async () => {
+          const payload = JSON.stringify(
+            {
+              exportedAt: new Date().toISOString(),
+              goals,
+              lists,
+              selectedListId
+            },
+            null,
+            2
+          );
+
+          if (supportsFilePicker) {
+            try {
+              const handle = await window.showSaveFilePicker({
+                suggestedName: EXPORT_FILE_NAME,
+                types: [
+                  {
+                    description: "Goal Tracker JSON",
+                    accept: { "application/json": [".json"] }
+                  }
+                ]
+              });
+              const wrote = await writeFileHandle(handle, payload);
+              if (wrote) {
+                fileHandleRef.current = handle;
+                setStatusMessage("선택한 위치에 저장했습니다. 다음에는 동기화 버튼으로 덮어쓸 수 있습니다.");
+                setLastSavedAt(Date.now());
+                return;
+              }
+            } catch (err) {
+              if (err?.name === "AbortError") {
+                setStatusMessage("파일 저장을 취소했습니다.");
+                return;
+              }
+              console.error("[sync] export failed via picker", err);
+            }
+          }
+
+          try {
+            const blob = new Blob([payload], { type: "application/json" });
+            const url = URL.createObjectURL(blob);
+            const anchor = document.createElement("a");
+            anchor.href = url;
+            anchor.download = EXPORT_FILE_NAME;
+            document.body.appendChild(anchor);
+            anchor.click();
+            document.body.removeChild(anchor);
+            URL.revokeObjectURL(url);
+            setStatusMessage("파일을 다운로드했습니다. 필요한 위치로 이동해 Resilio Sync 폴더에 두세요.");
+            setLastSavedAt(Date.now());
+          } catch (err) {
+            console.error("[sync] export failed", err);
+            setStatusMessage("파일로 저장하지 못했습니다. 브라우저 권한을 확인해주세요.");
+          }
+        }, [goals, lists, selectedListId, supportsFilePicker, writeFileHandle]);
+
+        const triggerSync = useCallback(async () => {
+          setIsSyncing(true);
+          const payload = JSON.stringify(
+            {
+              syncedAt: new Date().toISOString(),
+              goals,
+              lists,
+              selectedListId
+            },
+            null,
+            2
+          );
+
+          if (!fileHandleRef.current) {
+            // No file handle, trigger export flow
+            if (supportsFilePicker) {
+              try {
+                const handle = await window.showSaveFilePicker({
+                  suggestedName: EXPORT_FILE_NAME,
+                  types: [
+                    {
+                      description: "Goal Tracker JSON",
+                      accept: { "application/json": [".json"] }
+                    }
+                  ]
+                });
+                const wrote = await writeFileHandle(handle, payload);
+                if (wrote) {
+                  fileHandleRef.current = handle;
+                  setStatusMessage("✓ 파일 저장 완료! 다음부터 자동 동기화됩니다.");
+                  setLastSavedAt(Date.now());
+                  setTimeout(() => setStatusMessage("로컬에 자동 저장됩니다."), 2000);
+                  setIsSyncing(false);
+                  return;
+                }
+              } catch (err) {
+                if (err?.name === "AbortError") {
+                  setStatusMessage("파일 저장을 취소했습니다.");
+                  setIsSyncing(false);
+                  return;
+                }
+              }
+            }
+            // Fallback to download
+            try {
+              const blob = new Blob([payload], { type: "application/json" });
+              const url = URL.createObjectURL(blob);
+              const anchor = document.createElement("a");
+              anchor.href = url;
+              anchor.download = EXPORT_FILE_NAME;
+              document.body.appendChild(anchor);
+              anchor.click();
+              document.body.removeChild(anchor);
+              URL.revokeObjectURL(url);
+              setStatusMessage("파일을 다운로드했습니다.");
+              setLastSavedAt(Date.now());
+            } catch (err) {
+              setStatusMessage("파일 저장에 실패했습니다.");
+            }
+            setIsSyncing(false);
+            return;
+          }
+
+          setStatusMessage("동기화 중...");
+          try {
+            const synced = await writeFileHandle(fileHandleRef.current, payload);
+            if (synced) {
+              setStatusMessage("✓ 동기화 완료!");
+              setLastSavedAt(Date.now());
+              setTimeout(() => setStatusMessage("로컬에 자동 저장됩니다."), 2000);
+            } else {
+              if (!fileHandleRef.current) {
+                setStatusMessage("✗ 파일 연결 만료. 다시 동기화해주세요.");
+              } else {
+                setStatusMessage("✗ 동기화 실패. 다시 시도해주세요.");
+              }
+            }
+          } catch (err) {
+            setStatusMessage("✗ 동기화 오류 발생.");
+          }
+          setIsSyncing(false);
+        }, [goals, lists, selectedListId, writeFileHandle, supportsFilePicker]);
+
+        return {
+          fileInputRef,
+          fileHandleRef,
+          triggerImport,
+          handleFileSelected,
+          triggerExport,
+          triggerSync,
+          statusMessage,
+          lastSavedAt,
+          lastLoadedAt,
+          storageKey: STORAGE_KEY,
+          exportFileName: EXPORT_FILE_NAME,
+          supportsFilePicker,
+          writeFileHandle,
+          isSyncing
+        };
+      }
+
+      function GoalTracker() {
+        const [goals, setGoals] = useState([]);
+        const [lists, setLists] = useState([]);
+        const [selectedListId, setSelectedListId] = useState(null);
+        const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+        const [listsEditMode, setListsEditMode] = useState(false);
+        const [draggingListId, setDraggingListId] = useState(null);
+        const [dragOverListId, setDragOverListId] = useState(null);
+        const [dropboxConnected, setDropboxConnected] = useState(false);
+        const [dropboxSyncing, setDropboxSyncing] = useState(false);
+        const [showDropboxMenu, setShowDropboxMenu] = useState(false);
+        const [selectedCardIndex, setSelectedCardIndex] = useState(0);
+        const [selectedFieldIndex, setSelectedFieldIndex] = useState(-1);
+        const [showShortcuts, setShowShortcuts] = useState(false);
+        const [sidebarFocused, setSidebarFocused] = useState(false);
+        const [selectedListIndex, setSelectedListIndex] = useState(0);
+        const [newGoalName, setNewGoalName] = useState("");
+        const [newGoalTargetHours, setNewGoalTargetHours] = useState("");
+        const [newGoalTargetMinutes, setNewGoalTargetMinutes] = useState("");
+        const [editingGoalName, setEditingGoalName] = useState(null);
+        const [editingTargetHours, setEditingTargetHours] = useState(null);
+        const [editingTargetMinutes, setEditingTargetMinutes] = useState(null);
+        const [activeTimer, setActiveTimer] = useState(null);
+        const [timerSeconds, setTimerSeconds] = useState(0);
+        const [timerStartTime, setTimerStartTime] = useState(null);
+        const persistence = useGoalDataPersistence({
+          goals,
+          setGoals,
+          lists,
+          setLists,
+          selectedListId,
+          setSelectedListId
+        });
+        const [showToast, setShowToast] = useState(false);
+        const toastTimeoutRef = useRef(null);
+        const [expandedGoals, setExpandedGoals] = useState(() => new Set());
+        const [expandedLogsGoals, setExpandedLogsGoals] = useState(() => new Set());
+        const [editingLogsGoals, setEditingLogsGoals] = useState(() => new Set());
+        const [expandedTodos, setExpandedTodos] = useState(() => new Set());
+        const [selectedTab, setSelectedTab] = useState(() => new Map());
+        const [showAddLog, setShowAddLog] = useState(null);
+        const [newLogHours, setNewLogHours] = useState("");
+        const [newLogMinutes, setNewLogMinutes] = useState("");
+        const [newLogDate, setNewLogDate] = useState("");
+        const [newLogMemo, setNewLogMemo] = useState("");
+        const [timerMemo, setTimerMemo] = useState("");
+        const [editingLogIndex, setEditingLogIndex] = useState(null);
+        const [editLogMemo, setEditLogMemo] = useState("");
+        const [editingTodoId, setEditingTodoId] = useState(null);
+        const [selectedTodoId, setSelectedTodoId] = useState(null);
+        const [showAddTodo, setShowAddTodo] = useState(null);
+        const [newTodoText, setNewTodoText] = useState("");
+        const [draggingGoalId, setDraggingGoalId] = useState(null);
+        const [dragOverGoalId, setDragOverGoalId] = useState(null);
+        const [dragPosition, setDragPosition] = useState('before'); // 'before' or 'after'
+        const [cardsEditMode, setCardsEditMode] = useState(false);
+        const [touchStartX, setTouchStartX] = useState(null);
+        const [touchStartY, setTouchStartY] = useState(null);
+        const [showFileConnectPrompt, setShowFileConnectPrompt] = useState(false);
+        const [contextMenu, setContextMenu] = useState(null);
+        const [listContextMenu, setListContextMenu] = useState(null);
+        const [todoContextMenu, setTodoContextMenu] = useState(null);
+        const [logContextMenu, setLogContextMenu] = useState(null);
+        const [showDailySuggestion, setShowDailySuggestion] = useState(true);
+        const [confetti, setConfetti] = useState([]);
+        const [showWeeklyReport, setShowWeeklyReport] = useState(false);
+        const [pomodoroMode, setPomodoroMode] = useState(false);
+        const [pomodoroPhase, setPomodoroPhase] = useState('work'); // 'work' or 'break'
+        const [nextGoalSuggestion, setNextGoalSuggestion] = useState(null);
+        const notificationSoundRef = useRef(null);
+        const cardRefs = useRef([]);
+        const syncTimeoutRef = useRef(null);
+
+        // Show file connect prompt on first load
+        useEffect(() => {
+          const shown = localStorage.getItem(FILE_CONNECT_SHOWN_KEY);
+          if (!shown && !persistence.fileHandleRef?.current) {
+            setTimeout(() => setShowFileConnectPrompt(true), 1000);
+            localStorage.setItem(FILE_CONNECT_SHOWN_KEY, "true");
+          }
+        }, []);
+
+        // Check Dropbox connection status
+        useEffect(() => {
+          if (window.location.protocol === 'file:') return;
+          fetch('/api/dropbox/status')
+            .then(r => r.json())
+            .then(data => setDropboxConnected(data.connected))
+            .catch(() => {});
+        }, []);
+
+        const connectDropbox = async () => {
+          try {
+            const res = await fetch('/api/dropbox/auth/start');
+            const { authUrl } = await res.json();
+            const popup = window.open(authUrl, 'dropbox-auth', 'width=600,height=700');
+            const checkPopup = setInterval(() => {
+              if (popup.closed) {
+                clearInterval(checkPopup);
+                fetch('/api/dropbox/status')
+                  .then(r => r.json())
+                  .then(data => setDropboxConnected(data.connected));
+              }
+            }, 500);
+          } catch (err) {
+            alert('Dropbox 연결 실패');
+          }
+        };
+
+        const disconnectDropbox = async () => {
+          try {
+            await fetch('/api/dropbox/disconnect');
+            setDropboxConnected(false);
+            setShowDropboxMenu(false);
+          } catch (err) {
+            alert('연결 해제 실패');
+          }
+        };
+
+        const syncToDropbox = async () => {
+          if (!dropboxConnected) {
+            connectDropbox();
+            return;
+          }
+          setDropboxSyncing(true);
+          try {
+            const payload = { goals, lists, selectedListId };
+            await fetch('/api/dropbox/sync', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ action: 'push', data: payload })
+            });
+            alert('Dropbox 업로드 완료');
+          } catch (err) {
+            alert('업로드 실패');
+          } finally {
+            setDropboxSyncing(false);
+          }
+        };
+
+        const syncFromDropbox = async () => {
+          if (!dropboxConnected) {
+            connectDropbox();
+            return;
+          }
+          setDropboxSyncing(true);
+          try {
+            const res = await fetch('/api/dropbox/sync', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ action: 'pull' })
+            });
+            const data = await res.json();
+            if (data.goals) setGoals(data.goals);
+            if (data.lists) setLists(data.lists);
+            if (data.selectedListId) setSelectedListId(data.selectedListId);
+            alert('Dropbox 다운로드 완료');
+          } catch (err) {
+            alert('다운로드 실패');
+          } finally {
+            setDropboxSyncing(false);
+          }
+        };
+
+        // Load timer state on mount
+        useEffect(() => {
+          try {
+            const saved = localStorage.getItem('timer-state');
+            if (saved) {
+              const { activeTimer: savedTimer, timerStartTime: savedStart } = JSON.parse(saved);
+              if (savedTimer && savedStart) {
+                const elapsed = Math.floor((Date.now() - savedStart) / 1000);
+                setActiveTimer(savedTimer);
+                setTimerSeconds(elapsed);
+                setTimerStartTime(savedStart);
+              }
+            }
+          } catch (err) {}
+        }, []);
+
+        useEffect(() => {
+          if (activeTimer === null || !timerStartTime) return undefined;
+          const interval = setInterval(() => {
+            setTimerSeconds(Math.floor((Date.now() - timerStartTime) / 1000));
+          }, 1000);
+          return () => clearInterval(interval);
+        }, [activeTimer, timerStartTime]);
+
+        // Load lists/selection from separate storage
+               // Load and manage lists/selection
+               useEffect(() => {
+          try {
+            const raw = localStorage.getItem(LISTS_STORAGE_KEY);
+            let loadedLists = [];
+            let loadedSelectedId = null;
+
+            if (raw) {
+              const parsed = JSON.parse(raw);
+              if (Array.isArray(parsed?.lists)) {
+                loadedLists = parsed.lists;
+              }
+              if (parsed?.selectedListId) {
+                loadedSelectedId = parsed.selectedListId;
+              }
+            }
+
+            // Ensure at least default list exists
+            if (loadedLists.length === 0) {
+              loadedLists = [{ id: "default", name: "기본함" }];
+            }
+
+            // Set valid selectedId or use first list
+            if (!loadedSelectedId || !loadedLists.find(l => l.id === loadedSelectedId)) {
+              loadedSelectedId = loadedLists[0].id;
+            }
+
+            setLists(loadedLists);
+            setSelectedListId(loadedSelectedId);
+
+            // Migrate goals without listId
+            if (goals.length > 0) {
+              setGoals((prev) => prev.map((g) => ({ ...g, listId: g.listId || "default" })));
+            }
+          } catch (err) {
+            // Fallback to default
+            const defaultList = { id: "default", name: "기본함" };
+            setLists([defaultList]);
+            setSelectedListId("default");
+          }
+        }, [goals.length]);
+
+               // Save lists/selection
+               useEffect(() => {
+          if (lists.length > 0) {
+            try {
+              const payload = JSON.stringify({ lists, selectedListId, savedAt: new Date().toISOString() });
+              localStorage.setItem(LISTS_STORAGE_KEY, payload);
+              
+              if (syncTimeoutRef.current) clearTimeout(syncTimeoutRef.current);
+              if (persistence.fileHandleRef?.current) {
+                syncTimeoutRef.current = setTimeout(async () => {
+                  const syncPayload = JSON.stringify({
+                    syncedAt: new Date().toISOString(),
+                    goals,
+                    lists,
+                    selectedListId
+                  }, null, 2);
+                  const synced = await persistence.writeFileHandle(persistence.fileHandleRef.current, syncPayload);
+                  if (!synced && !persistence.fileHandleRef.current) {
+                    persistence.setStatusMessage?.("✗ 파일 연결 만료. 동기화 버튼을 눌러주세요.");
+                  }
+                }, 3000);
+              }
+            } catch (err) {}
+          }
+        }, [lists, selectedListId, goals, persistence]);
+
+
+
+        const addGoal = () => {
+          const trimmedName = newGoalName.trim();
+          if (!trimmedName) return;
+          const hours = parseFloat(newGoalTargetHours) || 0;
+          const minutes = parseFloat(newGoalTargetMinutes) || 0;
+          const totalHours = hours + minutes / 60;
+          setGoals((prevGoals) => [
+            {
+              id: Date.now(),
+              name: trimmedName,
+              targetHours: totalHours,
+              totalSeconds: 0,
+              logs: [],
+              todos: [],
+              createdAt: new Date(),
+              completedAt: null,
+              listId: selectedListId || "default"
+            },
+            ...prevGoals
+          ]);
+          setNewGoalName("");
+          setNewGoalTargetHours("");
+          setNewGoalTargetMinutes("");
+        };
+
+        const addList = (name) => {
+          const trimmed = (name || "").trim();
+          if (!trimmed) return;
+          const id = `list-${Date.now()}`;
+          setLists((prev) => [...prev, { id, name: trimmed }]);
+          setSelectedListId(id);
+        };
+
+        const deleteList = (id) => {
+          if (!id) return;
+          const hasGoals = goals.some((g) => (g.listId || "default") === id);
+          if (hasGoals) {
+            alert("리스트에 목표가 있어 삭제할 수 없습니다.");
+            return;
+          }
+          setLists((prev) => prev.filter((l) => l.id !== id));
+          if (selectedListId === id) setSelectedListId(lists.find((l) => l.id !== id)?.id || "default");
+        };
+
+        const handleListKeyDown = (e) => {
+          if (e.key === 'Enter') {
+            const val = e.currentTarget.value;
+            addList(val);
+            e.currentTarget.value = '';
+          }
+        };
+
+        const handleListDragStart = (listId) => setDraggingListId(listId);
+        const handleListDragEnter = (e, listId) => { e.preventDefault(); if (dragOverListId !== listId) setDragOverListId(listId); };
+        const handleListDragOver = (e) => e.preventDefault();
+        const handleListDragLeave = () => {};
+        const handleListDrop = (listId) => {
+          // If dragging a goal, move it to this list
+          if (draggingGoalId) {
+            setGoals((prev) => prev.map((g) => g.id === draggingGoalId ? { ...g, listId } : g));
+            setDraggingGoalId(null);
+            setDragOverGoalId(null);
+            setDragOverListId(null);
+            return;
+          }
+          // If dragging a list, reorder lists
+          if (!draggingListId || draggingListId === listId) { setDraggingListId(null); setDragOverListId(null); return; }
+          setLists((prev) => {
+            const from = prev.findIndex((l) => l.id === draggingListId);
+            const to = prev.findIndex((l) => l.id === listId);
+            if (from === -1 || to === -1) return prev;
+            const next = prev.slice();
+            const [moved] = next.splice(from, 1);
+            next.splice(to, 0, moved);
+            return next;
+          });
+          setDraggingListId(null);
+          setDragOverListId(null);
+        };
+
+        // Mobile-friendly list reorder via buttons (edit mode)
+        const moveListUp = (listId) => {
+          setLists((prev) => {
+            const i = prev.findIndex((l) => l.id === listId);
+            if (i <= 0) return prev;
+            const next = prev.slice();
+            [next[i - 1], next[i]] = [next[i], next[i - 1]];
+            return next;
+          });
+        };
+        const moveListDown = (listId) => {
+          setLists((prev) => {
+            const i = prev.findIndex((l) => l.id === listId);
+            if (i === -1 || i >= prev.length - 1) return prev;
+            const next = prev.slice();
+            [next[i], next[i + 1]] = [next[i + 1], next[i]];
+            return next;
+          });
+        };
+
+        const handleKeyPress = (e) => {
+          if (e.key === 'Enter') {
+            addGoal();
+          }
+        };
+
+        const startTimer = (goalId, todoText = "") => {
+          const now = Date.now();
+          setActiveTimer(goalId);
+          setTimerSeconds(0);
+          setTimerStartTime(now);
+          setTimerMemo(todoText);
+          localStorage.setItem('timer-state', JSON.stringify({
+            activeTimer: goalId,
+            timerStartTime: now
+          }));
+        };
+
+        useEffect(() => {
+          if (!activeTimer || timerSeconds === 0) return;
+          if (pomodoroMode) {
+            if (pomodoroPhase === 'work' && timerSeconds === 25 * 60) {
+              alert('25분 작업 완료! 5분 휴식하세요.');
+              setPomodoroPhase('break');
+              setTimerSeconds(0);
+            } else if (pomodoroPhase === 'break' && timerSeconds === 5 * 60) {
+              alert('휴식 완료! 다시 작업을 시작하세요.');
+              setPomodoroPhase('work');
+              setTimerSeconds(0);
+            }
+          }
+        }, [timerSeconds, activeTimer, pomodoroMode, pomodoroPhase]);
+
+        const stopTimer = (goalId) => {
+          if (activeTimer === goalId && timerSeconds > 0) {
+            setGoals((prevGoals) =>
+              prevGoals.map((goal) => {
+                if (goal.id === goalId) {
+                  const newTotalSeconds = goal.totalSeconds + timerSeconds;
+                  return {
+                    ...goal,
+                    totalSeconds: newTotalSeconds,
+                    logs: [
+                      {
+                        date: new Date().toLocaleDateString("ko-KR"),
+                        seconds: timerSeconds,
+                        memo: timerMemo || ""
+                      },
+                      ...goal.logs
+                    ]
+                  };
+                }
+                return goal;
+              })
+            );
+          }
+          setActiveTimer(null);
+          setTimerSeconds(0);
+          setTimerStartTime(null);
+          setTimerMemo("");
+localStorage.removeItem('timer-state');
+        };
+
+        const deleteGoal = (goalId) => {
+          if (!window.confirm("정말로 이 목표를 삭제할까요?")) return;
+          setGoals((prevGoals) => prevGoals.filter((goal) => goal.id !== goalId));
+        };
+
+        const triggerConfetti = () => {
+          const colors = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6'];
+          const newConfetti = Array.from({ length: 50 }, (_, i) => ({
+            id: Date.now() + i,
+            left: Math.random() * 100,
+            backgroundColor: colors[Math.floor(Math.random() * colors.length)],
+            delay: Math.random() * 0.5
+          }));
+          setConfetti(newConfetti);
+          setTimeout(() => setConfetti([]), 3000);
+        };
+
+        const toggleComplete = (goalId) => {
+          setGoals((prevGoals) =>
+            prevGoals.map((goal) => {
+              if (goal.id !== goalId) return goal;
+              if (goal.completedAt) {
+                return { ...goal, completedAt: null };
+              }
+              triggerConfetti();
+              const incomplete = prevGoals.filter(g => !g.completedAt && g.id !== goalId && getProgress(g) < 100);
+              if (incomplete.length > 0) {
+                setNextGoalSuggestion(incomplete[0]);
+                setTimeout(() => setNextGoalSuggestion(null), 5000);
+              }
+              return { ...goal, completedAt: new Date().toISOString() };
+            })
+          );
+        };
+
+        const updateGoalName = (goalId, value) => {
+          setGoals((prevGoals) =>
+            prevGoals.map((goal) => (goal.id === goalId ? { ...goal, name: value } : goal))
+          );
+        };
+
+        const updateGoalTarget = (goalId, value) => {
+          setGoals((prevGoals) =>
+            prevGoals.map((goal) => {
+              if (goal.id !== goalId) return goal;
+              const newTarget = (() => {
+                const parsed = parseFloat(value);
+                return Number.isFinite(parsed) ? parsed : 0;
+              })();
+              return {
+                ...goal,
+                targetHours: newTarget
+              };
+            })
+          );
+        };
+
+        const toggleGoalExpanded = useCallback((goalId) => {
+          setExpandedGoals((prev) => {
+            const next = new Set(prev);
+            if (next.has(goalId)) {
+              next.delete(goalId);
+            } else {
+              next.add(goalId);
+            }
+            return next;
+          });
+        }, []);
+
+        const toggleExpandedLogs = (goalId) => {
+          setExpandedLogsGoals((prev) => {
+            const next = new Set(prev);
+            if (next.has(goalId)) {
+              next.delete(goalId);
+            } else {
+              next.add(goalId);
+            }
+            return next;
+          });
+        };
+
+        const toggleEditingLogs = (goalId) => {
+          setEditingLogsGoals((prev) => {
+            const next = new Set(prev);
+            if (next.has(goalId)) {
+              next.delete(goalId);
+            } else {
+              next.add(goalId);
+            }
+            return next;
+          });
+        };
+
+        const toggleExpandedTodos = (goalId) => {
+          setExpandedTodos((prev) => {
+            const next = new Set(prev);
+            if (next.has(goalId)) {
+              next.delete(goalId);
+            } else {
+              next.add(goalId);
+            }
+            return next;
+          });
+        };
+
+        const handleLogKeyPress = (e, goalId) => {
+          if (e.key === 'Enter') {
+            addManualLog(goalId);
+          }
+        };
+
+        const moveGoalUp = (goalId) => {
+          setGoals((prevGoals) => {
+            const idx = prevGoals.findIndex((g) => g.id === goalId);
+            if (idx <= 0) return prevGoals;
+            const next = prevGoals.slice();
+            [next[idx - 1], next[idx]] = [next[idx], next[idx - 1]];
+            return next;
+          });
+          // Update selected card index to follow the moved goal
+          const sortedIdx = sortedGoals.findIndex((g) => g.id === goalId);
+          if (sortedIdx > 0) {
+            setSelectedCardIndex(sortedIdx - 1);
+          }
+        };
+
+        const moveGoalDown = (goalId) => {
+          setGoals((prevGoals) => {
+            const idx = prevGoals.findIndex((g) => g.id === goalId);
+            if (idx === -1 || idx >= prevGoals.length - 1) return prevGoals;
+            const next = prevGoals.slice();
+            [next[idx], next[idx + 1]] = [next[idx + 1], next[idx]];
+            return next;
+          });
+          // Update selected card index to follow the moved goal
+          const sortedIdx = sortedGoals.findIndex((g) => g.id === goalId);
+          if (sortedIdx < sortedGoals.length - 1) {
+            setSelectedCardIndex(sortedIdx + 1);
+          }
+        };
+
+        const handleDragStart = (goalId) => {
+          setDraggingGoalId(goalId);
+        };
+
+        const handleDragEnter = (event, overGoalId) => {
+          event.preventDefault();
+          const rect = event.currentTarget.getBoundingClientRect();
+          const midpoint = rect.top + rect.height / 2;
+          const position = event.clientY < midpoint ? 'before' : 'after';
+          setDragOverGoalId(overGoalId);
+          setDragPosition(position);
+        };
+
+        const handleDragLeave = () => {
+          // no-op to keep the indicator stable until drop or drag end
+        };
+
+        const handleDrop = (overGoalId) => {
+          if (!draggingGoalId || draggingGoalId === overGoalId) {
+            setDraggingGoalId(null);
+            setDragOverGoalId(null);
+            return;
+          }
+          const draggedGoalSortedIdx = sortedGoals.findIndex((g) => g.id === draggingGoalId);
+          setGoals((prevGoals) => {
+            const fromIdx = prevGoals.findIndex((g) => g.id === draggingGoalId);
+            const toIdx = prevGoals.findIndex((g) => g.id === overGoalId);
+            if (fromIdx === -1 || toIdx === -1) return prevGoals;
+            const next = prevGoals.slice();
+            const [moved] = next.splice(fromIdx, 1);
+            let insertIdx = toIdx;
+            if (fromIdx < toIdx) insertIdx--; // Adjust for removal
+            if (dragPosition === 'after') insertIdx++;
+            next.splice(insertIdx, 0, moved);
+            return next;
+          });
+          // Update selected card index to follow the dragged goal
+          setTimeout(() => {
+            const newSortedIdx = sortedGoals.findIndex((g) => g.id === draggingGoalId);
+            if (newSortedIdx >= 0) setSelectedCardIndex(newSortedIdx);
+          }, 0);
+          setDraggingGoalId(null);
+          setDragOverGoalId(null);
+        };
+
+        const cancelTimer = (goalId) => {
+          if (activeTimer === goalId) {
+            setActiveTimer(null);
+            setTimerSeconds(0);
+            setTimerStartTime(null);
+            setTimerMemo("");
+            setPomodoroPhase('work');
+            localStorage.removeItem('timer-state');
+          }
+        };
+
+        const updateLogMemo = (goalId, logIndex, newMemo) => {
+          setGoals((prevGoals) =>
+            prevGoals.map((goal) => {
+              if (goal.id !== goalId) return goal;
+              const updatedLogs = goal.logs.map((log, idx) =>
+                idx === logIndex ? { ...log, memo: newMemo } : log
+              );
+              return { ...goal, logs: updatedLogs };
+            })
+          );
+        };
+
+        const deleteGoalLog = (goalId, logIndex) => {
+          if (!window.confirm("이 기록을 삭제할까요?")) return;
+          setGoals((prevGoals) =>
+            prevGoals.map((goal) => {
+              if (goal.id !== goalId) return goal;
+              const removed = goal.logs[logIndex];
+              if (!removed) return goal;
+              const updatedLogs = goal.logs.filter((_, index) => index !== logIndex);
+              const adjustedSeconds = Math.max(goal.totalSeconds - removed.seconds, 0);
+              return { ...goal, logs: updatedLogs, totalSeconds: adjustedSeconds };
+            })
+          );
+        };
+
+        const addManualLog = (goalId) => {
+          const hours = parseFloat(newLogHours) || 0;
+          const minutes = parseFloat(newLogMinutes) || 0;
+          const totalSeconds = hours * 3600 + minutes * 60;
+          
+          if (totalSeconds > 0) {
+            const logDate = newLogDate ? new Date(newLogDate).toLocaleDateString("ko-KR") : new Date().toLocaleDateString("ko-KR");
+            setGoals((prevGoals) =>
+              prevGoals.map((goal) => {
+                if (goal.id !== goalId) return goal;
+                const newTotalSeconds = goal.totalSeconds + totalSeconds;
+                return {
+                  ...goal,
+                  totalSeconds: newTotalSeconds,
+                  logs: [
+                    {
+                      date: logDate,
+                      seconds: totalSeconds,
+                      memo: newLogMemo || ""
+                    },
+                    ...goal.logs
+                  ]
+                };
+              })
+            );
+            setNewLogHours("");
+            setNewLogMinutes("");
+            setNewLogDate("");
+            setNewLogMemo("");
+            setShowAddLog(null);
+          }
+        };
+
+        const formatTime = (seconds) => {
+          const hours = Math.floor(seconds / 3600);
+          const mins = Math.floor((seconds % 3600) / 60);
+          const secs = seconds % 60;
+          return `${String(hours).padStart(2, '0')}:${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+        };
+
+        const formatHoursVerbose = (hoursValue) => {
+          if (!hoursValue || hoursValue <= 0) return "0초";
+          const totalSeconds = Math.round(hoursValue * 3600);
+          if (totalSeconds < 60) {
+            return `${totalSeconds}초`;
+          }
+          const totalMinutes = Math.round(totalSeconds / 60);
+          if (totalMinutes < 60) {
+            return `${totalMinutes}분`;
+          }
+          const hours = Math.floor(totalSeconds / 3600);
+          const remainingMinutes = Math.round((totalSeconds % 3600) / 60);
+          if (remainingMinutes === 0) {
+            return `${hours}시간`;
+          }
+          return `${hours}시간 ${remainingMinutes}분`;
+        };
+
+        const formatDuration = (secondsValue) => {
+          if (!secondsValue || secondsValue <= 0) return "0초";
+          const hours = Math.floor(secondsValue / 3600);
+          const minutes = Math.floor((secondsValue % 3600) / 60);
+          const seconds = secondsValue % 60;
+          const parts = [];
+          if (hours) parts.push(`${hours}시간`);
+          if (minutes) parts.push(`${minutes}분`);
+          if (seconds && !hours && !minutes) parts.push(`${seconds}초`);
+          return parts.join(" ") || "0초";
+        };
+
+        const getProgress = (goal, totalSeconds = goal.totalSeconds) => {
+          if (!goal.targetHours) return 0;
+          const hours = totalSeconds / 3600;
+          return Math.min((hours / goal.targetHours) * 100, 100);
+        };
+
+        const getStatus = (goal, totalSeconds = goal.totalSeconds) => {
+          if (!goal.targetHours) return "목표를 설정해주세요";
+          const hours = totalSeconds / 3600;
+          if (hours >= goal.targetHours) return "완료!";
+          const remainingHours = goal.targetHours - hours;
+          if (remainingHours < 1 / 60) {
+            const remainingSeconds = remainingHours * 3600;
+            return `${Math.max(remainingSeconds.toFixed(0), 1)}초 남음`;
+          }
+          if (remainingHours < 1) {
+            return `${(remainingHours * 60).toFixed(0)}분 남음`;
+          }
+          return `${remainingHours.toFixed(1)}시간 남음`;
+        };
+
+        // 스트릭 계산 (연속 실행일)
+        const getStreak = (goal) => {
+          if (!goal.logs || goal.logs.length === 0) return 0;
+          
+          // 날짜별로 그룹화 (같은 날 여러 기록 = 1일)
+          const uniqueDates = [...new Set(goal.logs.map(log => log.date))].sort((a, b) => new Date(b) - new Date(a));
+          if (uniqueDates.length === 0) return 0;
+          
+          let streak = 0;
+          let checkDate = new Date();
+          
+          for (const dateStr of uniqueDates) {
+            const expectedDate = checkDate.toLocaleDateString("ko-KR");
+            if (dateStr === expectedDate) {
+              streak++;
+              checkDate.setDate(checkDate.getDate() - 1);
+            } else {
+              break;
+            }
+          }
+          return streak;
+        };
+
+        // 오늘 작업했는지 확인
+        const hasWorkedToday = (goal) => {
+          if (!goal.logs || goal.logs.length === 0) return false;
+          const today = new Date().toLocaleDateString("ko-KR");
+          return goal.logs.some(log => log.date === today);
+        };
+
+        // 일일 목표 제안 (남은 시간 / 남은 일수)
+        const getDailySuggestion = (goal) => {
+          if (!goal.targetHours || goal.completedAt) return null;
+          const remainingHours = Math.max(0, goal.targetHours - (goal.totalSeconds / 3600));
+          if (remainingHours === 0) return null;
+          const dailyHours = remainingHours / 30;
+          if (dailyHours < 1/60) return "1분";
+          if (dailyHours < 1) return `${Math.ceil(dailyHours * 60)}분`;
+          return `${dailyHours.toFixed(1)}시간`;
+        };
+
+        const getTodayTotalSeconds = () => {
+          const today = new Date().toLocaleDateString("ko-KR");
+          return filteredGoals.reduce((total, goal) => {
+            const todayLogs = goal.logs.filter(log => log.date === today);
+            return total + todayLogs.reduce((sum, log) => sum + log.seconds, 0);
+          }, 0) + (activeTimer ? timerSeconds : 0);
+        };
+
+        const getWeeklyStats = () => {
+          const now = new Date();
+          const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+          let totalSeconds = 0;
+          const goalStats = {};
+          const listStats = {};
+          goals.forEach(goal => {
+            goal.logs.forEach(log => {
+              const logDate = new Date(log.date);
+              if (logDate >= weekAgo) {
+                totalSeconds += log.seconds;
+                goalStats[goal.name] = (goalStats[goal.name] || 0) + log.seconds;
+                const listId = goal.listId || 'default';
+                const listName = lists.find(l => l.id === listId)?.name || '기본함';
+                listStats[listName] = (listStats[listName] || 0) + log.seconds;
+              }
+            });
+          });
+          const topGoal = Object.entries(goalStats).sort((a, b) => b[1] - a[1])[0];
+          const sortedLists = Object.entries(listStats).sort((a, b) => b[1] - a[1]);
+          return { totalSeconds, topGoal: topGoal ? { name: topGoal[0], seconds: topGoal[1] } : null, listStats: sortedLists };
+        };
+
+        const getAchievementBadge = (goal) => {
+          const progress = getProgress(goal);
+          if (progress >= 100) return '🥇';
+          if (progress >= 80) return '🥈';
+          return null;
+        };
+
+        const filteredGoals = goals.filter((g) => (g.listId || "default") === (selectedListId || "default"));
+        
+        // 오늘 미실행 목표를 상단에 배치
+        const sortedGoals = [...filteredGoals].sort((a, b) => {
+          const aWorked = hasWorkedToday(a);
+          const bWorked = hasWorkedToday(b);
+          const aComplete = a.completedAt || getProgress(a) >= 100;
+          const bComplete = b.completedAt || getProgress(b) >= 100;
+          
+          // 완료된 목표는 하단으로
+          if (aComplete && !bComplete) return 1;
+          if (!aComplete && bComplete) return -1;
+          
+          // 미완료 중에서 오늘 안 한 목표를 상단으로
+          if (!aComplete && !bComplete) {
+            if (!aWorked && bWorked) return -1;
+            if (aWorked && !bWorked) return 1;
+          }
+          
+          return 0;
+        });
+        
+        const todayPendingGoals = filteredGoals.filter(g => !hasWorkedToday(g) && !g.completedAt && getProgress(g) < 100);
+
+        const handleContextMenu = (e, goalId) => {
+          e.preventDefault();
+          setContextMenu({ x: e.clientX, y: e.clientY, goalId });
+        };
+
+        const handleListContextMenu = (e, listId) => {
+          e.preventDefault();
+          setListContextMenu({ x: e.clientX, y: e.clientY, listId });
+        };
+
+        useEffect(() => {
+          const handleClick = () => {
+            setContextMenu(null);
+            setListContextMenu(null);
+            setTodoContextMenu(null);
+            setLogContextMenu(null);
+            setEditingLogIndex(null);
+            setShowDropboxMenu(false);
+          };
+          document.addEventListener('click', handleClick);
+          return () => document.removeEventListener('click', handleClick);
+        }, []);
+
+        useEffect(() => {
+          const currentListIdx = lists.findIndex(l => l.id === selectedListId);
+          if (currentListIdx >= 0) setSelectedListIndex(currentListIdx);
+        }, [selectedListId, lists]);
+
+        useEffect(() => {
+          const handleKeyDown = (e) => {
+            if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.isContentEditable) {
+              if (e.key === 'Escape') {
+                e.target.blur();
+                setSelectedFieldIndex(-1);
+              } else if (e.key === 'ArrowDown' && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) {
+                e.preventDefault();
+                e.target.blur();
+                if (e.target.id === 'new-list-input') {
+                  setSidebarFocused(true);
+                  setSelectedListIndex(0);
+                } else {
+                  setSelectedCardIndex(0);
+                }
+              }
+              return;
+            }
+
+            if (sidebarFocused) {
+              if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                setSelectedListIndex((prev) => Math.min(lists.length - 1, prev + 1));
+              } else if (e.key === 'ArrowUp') {
+                e.preventDefault();
+                if (selectedListIndex === 0) {
+                  const input = document.querySelector('#new-list-input');
+                  if (input) {
+                    input.focus();
+                    setSidebarFocused(false);
+                    setSelectedListIndex(-1);
+                    setSelectedCardIndex(-1);
+                  }
+                } else {
+                  setSelectedListIndex((prev) => prev - 1);
+                }
+              } else if (e.key === 'ArrowRight') {
+                e.preventDefault();
+                setSidebarFocused(false);
+                if (selectedCardIndex < 0 && sortedGoals.length > 0) {
+                  setSelectedCardIndex(0);
+                }
+              } else if (e.key === 'Enter') {
+                e.preventDefault();
+                if (lists[selectedListIndex]) {
+                  setSelectedListId(lists[selectedListIndex].id);
+                }
+              } else if (e.altKey && e.key === 'ArrowUp') {
+                e.preventDefault();
+                if (selectedListIndex > 0) {
+                  moveListUp(lists[selectedListIndex]?.id);
+                  setSelectedListIndex((prev) => prev - 1);
+                }
+              } else if (e.altKey && e.key === 'ArrowDown') {
+                e.preventDefault();
+                if (selectedListIndex < lists.length - 1) {
+                  moveListDown(lists[selectedListIndex]?.id);
+                  setSelectedListIndex((prev) => prev + 1);
+                }
+              } else if (e.key === 'Delete') {
+                e.preventDefault();
+                if (lists[selectedListIndex]) deleteList(lists[selectedListIndex].id);
+              } else if (e.key === 'Escape') {
+                e.preventDefault();
+                setSidebarFocused(false);
+              }
+              return;
+            }
+
+            if (e.ctrlKey && e.code === 'Space') {
+              e.preventDefault();
+              if (sortedGoals[selectedCardIndex]) {
+                const goal = sortedGoals[selectedCardIndex];
+                if (activeTimer === goal.id) {
+                  stopTimer(goal.id);
+                } else {
+                  startTimer(goal.id);
+                }
+              }
+              return;
+            }
+
+            if (e.ctrlKey && e.key === 'Enter') {
+              e.preventDefault();
+              if (sortedGoals[selectedCardIndex]) {
+                toggleComplete(sortedGoals[selectedCardIndex].id);
+              }
+              return;
+            }
+
+            if (selectedFieldIndex >= 0) {
+              if (e.key === 'ArrowLeft') {
+                e.preventDefault();
+                setSelectedFieldIndex(Math.max(0, selectedFieldIndex - 1));
+              } else if (e.key === 'ArrowRight') {
+                e.preventDefault();
+                const goal = sortedGoals[selectedCardIndex];
+                const displayedLogs = (expandedLogsGoals.has(goal?.id) || editingLogsGoals.has(goal?.id)) ? goal?.logs : goal?.logs?.slice(-6);
+                const logCount = displayedLogs?.length || 0;
+                let maxField = 5 + logCount;
+                if (goal?.logs?.length > 6 && !expandedLogsGoals.has(goal?.id)) maxField++;
+                setSelectedFieldIndex(Math.min(maxField, selectedFieldIndex + 1));
+              } else if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                const goal = sortedGoals[selectedCardIndex];
+                const displayedLogs = (expandedLogsGoals.has(goal?.id) || editingLogsGoals.has(goal?.id)) ? goal?.logs : goal?.logs?.slice(-6);
+                const logCount = displayedLogs?.length || 0;
+                let maxField = 5 + logCount;
+                if (goal?.logs?.length > 6 && !expandedLogsGoals.has(goal?.id)) maxField++;
+                if (selectedFieldIndex < maxField) {
+                  setSelectedFieldIndex((prev) => prev + 1);
+                }
+              } else if (e.key === 'ArrowUp') {
+                e.preventDefault();
+                if (selectedFieldIndex > 0) {
+                  setSelectedFieldIndex((prev) => prev - 1);
+                }
+              } else if (e.key === 'Enter') {
+                e.preventDefault();
+                const goal = sortedGoals[selectedCardIndex];
+                if (!goal) return;
+                if (selectedFieldIndex === 0) {
+                  setEditingGoalName(goal.id);
+                  setTimeout(() => {
+                    const el = document.querySelector(`[data-goal-name="${goal.id}"]`);
+                    if (el) { el.focus(); const range = document.createRange(); range.selectNodeContents(el); const sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(range); }
+                  }, 0);
+                } else if (selectedFieldIndex === 1) {
+                  setEditingTargetHours(goal.id);
+                  setTimeout(() => {
+                    const el = document.querySelector(`[data-goal-hours="${goal.id}"]`);
+                    if (el) { el.focus(); const range = document.createRange(); range.selectNodeContents(el); const sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(range); }
+                  }, 0);
+                } else if (selectedFieldIndex === 2) {
+                  setTimeout(() => {
+                    const el = document.querySelector(`[data-goal-minutes="${goal.id}"]`);
+                    if (el) { el.focus(); const range = document.createRange(); range.selectNodeContents(el); const sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(range); }
+                  }, 0);
+                } else if (selectedFieldIndex === 3) {
+                  deleteGoal(goal.id);
+                } else if (selectedFieldIndex === 4) {
+                  if (activeTimer === goal.id) stopTimer(goal.id); else startTimer(goal.id);
+                } else if (selectedFieldIndex === 5) {
+                  setShowAddLog(goal.id);
+                } else if (selectedFieldIndex >= 6) {
+                  const displayedLogs = (expandedLogsGoals.has(goal.id) || editingLogsGoals.has(goal.id)) ? goal.logs : goal.logs.slice(-6);
+                  const logIndex = selectedFieldIndex - 6;
+                  if (logIndex < displayedLogs.length) {
+                    const originalIndex = goal.logs.indexOf(displayedLogs[logIndex]);
+                    setEditingLogIndex(`${goal.id}-${originalIndex}`);
+                    setEditLogMemo(goal.logs[originalIndex]?.memo || "");
+                  } else {
+                    toggleExpandedLogs(goal.id);
+                  }
+                }
+              } else if (e.key === 'Escape') {
+                e.preventDefault();
+                setSelectedFieldIndex(-1);
+              }
+              return;
+            }
+
+            if (e.key === 'ArrowDown') {
+              e.preventDefault();
+              const activeEl = document.activeElement;
+              if (activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA')) {
+                activeEl.blur();
+              }
+              setSelectedCardIndex((prev) => Math.min(sortedGoals.length - 1, prev + 1));
+            } else if (e.key === 'ArrowUp') {
+              e.preventDefault();
+              if (selectedCardIndex === 0) {
+                const input = document.querySelector('input[placeholder="목표 이름"]');
+                if (input) {
+                  input.focus();
+                  setSelectedCardIndex(-1);
+                }
+              } else {
+                setSelectedCardIndex((prev) => Math.max(0, prev - 1));
+              }
+            } else if (e.key === 'ArrowLeft') {
+              e.preventDefault();
+              setSidebarFocused(true);
+              if (selectedListIndex < 0) {
+                const currentListIdx = lists.findIndex(l => l.id === selectedListId);
+                setSelectedListIndex(currentListIdx >= 0 ? currentListIdx : 0);
+              }
+            } else if (e.key === 'Enter') {
+              e.preventDefault();
+              setSelectedFieldIndex(0);
+            } else if (e.key === 'Delete') {
+              e.preventDefault();
+              if (sortedGoals[selectedCardIndex]) deleteGoal(sortedGoals[selectedCardIndex].id);
+            }
+          };
+          document.addEventListener('keydown', handleKeyDown);
+          return () => document.removeEventListener('keydown', handleKeyDown);
+        }, [selectedCardIndex, selectedFieldIndex, sortedGoals, activeTimer, sidebarFocused, selectedListIndex, lists, selectedListId]);
+
+        useEffect(() => {
+          if (cardRefs.current[selectedCardIndex]) {
+            cardRefs.current[selectedCardIndex].scrollIntoView({ behavior: 'auto', block: 'center' });
+          }
+        }, [selectedCardIndex]);
+
+        useEffect(() => {
+          if (sidebarFocused && selectedListIndex >= 0) {
+            const listEl = document.querySelectorAll('.sidebar-list-item')[selectedListIndex];
+            if (listEl) {
+              listEl.scrollIntoView({ behavior: 'auto', block: 'nearest' });
+            }
+          }
+        }, [sidebarFocused, selectedListIndex]);
+
+        useEffect(() => {
+          if (persistence.statusMessage && (persistence.statusMessage.includes('✓') || persistence.statusMessage.includes('✗'))) {
+            setShowToast(true);
+            if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current);
+            toastTimeoutRef.current = setTimeout(() => setShowToast(false), 2000);
+          }
+        }, [persistence.statusMessage]);
+
+        return (
+          <div className="min-h-screen bg-black p-0 sm:p-5">
+            {confetti.map(c => (
+              <div
+                key={c.id}
+                className="confetti"
+                style={{
+                  left: `${c.left}%`,
+                  backgroundColor: c.backgroundColor,
+                  animationDelay: `${c.delay}s`
+                }}
+              />
+            ))}
+            {nextGoalSuggestion && (
+              <div className="fixed bottom-4 left-4 right-4 sm:left-auto sm:right-4 z-[60] bg-gradient-to-r from-blue-500 to-purple-500 text-white px-4 py-3 rounded-lg shadow-lg max-w-sm mx-auto sm:mx-0">
+                <div className="flex items-center justify-between gap-2">
+                  <div>
+                    <p className="text-sm font-semibold">🎉 목표 달성!</p>
+                    <p className="text-xs mt-1">다음은 "{nextGoalSuggestion.name}" 어떠세요?</p>
+                  </div>
+                  <button onClick={() => setNextGoalSuggestion(null)} className="text-white/80 hover:text-white">✕</button>
+                </div>
+              </div>
+            )}
+            {showWeeklyReport && (() => {
+              const stats = getWeeklyStats();
+              return (
+                <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4" onClick={() => setShowWeeklyReport(false)}>
+                  <div className="bg-gray-800 rounded-lg p-4 max-w-md w-full" onClick={(e) => e.stopPropagation()}>
+                    <h2 className="text-sm font-bold text-white mb-3">📊 주간 리포트</h2>
+                    <div className="space-y-2">
+                      <div>
+                        <p className="text-gray-400 text-xs">총 작업 시간</p>
+                        <p className="text-base font-bold text-cyan-400">{formatDuration(stats.totalSeconds)}</p>
+                      </div>
+                      {stats.topGoal && (
+                        <div>
+                          <p className="text-gray-400 text-xs">가장 많이 한 목표</p>
+                          <p className="text-sm font-semibold text-blue-400">{stats.topGoal.name}</p>
+                          <p className="text-xs text-gray-500">{formatDuration(stats.topGoal.seconds)}</p>
+                        </div>
+                      )}
+                      {stats.listStats.length > 0 && (
+                        <div>
+                          <p className="text-gray-400 text-xs mb-1">리스트별 작업 시간</p>
+                          <div className="space-y-1">
+                            {stats.listStats.map(([listName, seconds]) => (
+                              <div key={listName} className="flex justify-between items-center text-xs">
+                                <span className="text-gray-300">{listName}</span>
+                                <span className="text-purple-400 font-semibold">{formatDuration(seconds)}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                    <button onClick={() => setShowWeeklyReport(false)} className="mt-3 w-full px-3 py-1.5 bg-blue-500 hover:bg-blue-400 text-white rounded text-sm transition">닫기</button>
+                  </div>
+                </div>
+              );
+            })()}
+            {contextMenu && (
+              <div
+                className="fixed bg-gray-800 border border-gray-700 rounded-lg shadow-lg py-1 z-50"
+                style={{ left: contextMenu.x, top: contextMenu.y }}
+              >
+                {activeTimer === contextMenu.goalId ? (
+                  <button
+                    onClick={() => {
+                      cancelTimer(contextMenu.goalId);
+                      setContextMenu(null);
+                    }}
+                    className="w-full px-3 py-1.5 text-left text-sm text-gray-200 hover:bg-gray-700 transition"
+                  >
+                    취소
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => {
+                      startTimer(contextMenu.goalId);
+                      setContextMenu(null);
+                    }}
+                    className="w-full px-3 py-1.5 text-left text-sm text-gray-200 hover:bg-gray-700 transition"
+                  >
+                    시작
+                  </button>
+                )}
+                <button
+                  onClick={() => {
+                    toggleComplete(contextMenu.goalId);
+                    setContextMenu(null);
+                  }}
+                  className="w-full px-3 py-1.5 text-left text-sm text-gray-200 hover:bg-gray-700 transition"
+                >
+                  {(() => {
+                    const goal = goals.find(g => g.id === contextMenu.goalId);
+                    return goal?.completedAt ? "완료 취소" : "완료";
+                  })()}
+                </button>
+                <button
+                  onClick={() => {
+                    setShowAddLog(contextMenu.goalId);
+                    setContextMenu(null);
+                  }}
+                  className="w-full px-3 py-1.5 text-left text-sm text-gray-200 hover:bg-gray-700 transition"
+                >
+                  기록 추가
+                </button>
+                <button
+                  onClick={() => {
+                    deleteGoal(contextMenu.goalId);
+                    setContextMenu(null);
+                  }}
+                  className="w-full px-3 py-1.5 text-left text-sm text-red-400 hover:bg-gray-700 transition"
+                >
+                  삭제
+                </button>
+              </div>
+            )}
+            {listContextMenu && (
+              <div
+                className="fixed bg-gray-800 border border-gray-700 rounded-lg shadow-lg py-1 z-50"
+                style={{ left: listContextMenu.x, top: listContextMenu.y }}
+              >
+                <button
+                  onClick={() => {
+                    deleteList(listContextMenu.listId);
+                    setListContextMenu(null);
+                  }}
+                  className="w-full px-3 py-1.5 text-left text-sm text-red-400 hover:bg-gray-700 transition"
+                >
+                  삭제
+                </button>
+              </div>
+            )}
+            {todoContextMenu && (
+              <div
+                className="fixed bg-gray-800 border border-gray-700 rounded-lg shadow-lg py-1 z-50"
+                style={{ left: todoContextMenu.x, top: todoContextMenu.y }}
+              >
+                <button
+                  onClick={() => {
+                    setGoals((prev) => prev.map((g) => g.id === todoContextMenu.goalId ? { ...g, todos: g.todos.filter((t) => t.id !== todoContextMenu.todoId) } : g));
+                    setTodoContextMenu(null);
+                  }}
+                  className="w-full px-3 py-1.5 text-left text-sm text-red-400 hover:bg-gray-700 transition"
+                >
+                  할일 삭제
+                </button>
+              </div>
+            )}
+            {logContextMenu && (
+              <div
+                className="fixed bg-gray-800 border border-gray-700 rounded-lg shadow-lg py-1 z-50"
+                style={{ left: logContextMenu.x, top: logContextMenu.y }}
+              >
+                {(() => {
+                  const goal = goals.find(g => g.id === logContextMenu.goalId);
+                  const log = goal?.logs[logContextMenu.logIndex];
+                  return log?.fromTodo && (
+                    <button
+                      onClick={() => {
+                        setGoals((prev) => prev.map((g) => {
+                          if (g.id === logContextMenu.goalId) {
+                            const log = g.logs[logContextMenu.logIndex];
+                            return {
+                              ...g,
+                              todos: [...(g.todos || []), { id: Date.now(), text: log.memo, done: false }],
+                              logs: g.logs.filter((_, idx) => idx !== logContextMenu.logIndex)
+                            };
+                          }
+                          return g;
+                        }));
+                        setLogContextMenu(null);
+                      }}
+                      className="w-full px-3 py-1.5 text-left text-sm text-blue-400 hover:bg-gray-700 transition"
+                    >
+                      할일로 되돌리기
+                    </button>
+                  );
+                })()}
+                <button
+                  onClick={() => {
+                    deleteGoalLog(logContextMenu.goalId, logContextMenu.logIndex);
+                    setLogContextMenu(null);
+                  }}
+                  className="w-full px-3 py-1.5 text-left text-sm text-red-400 hover:bg-gray-700 transition"
+                >
+                  기록 삭제
+                </button>
+              </div>
+            )}
+            {showToast && (
+              <div className="fixed top-4 left-1/2 transform -translate-x-1/2 z-50 bg-gray-800 text-white px-4 py-2 rounded-lg shadow-lg text-sm">
+                {persistence.statusMessage}
+              </div>
+            )}
+            {showFileConnectPrompt && (
+              <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4" onClick={() => setShowFileConnectPrompt(false)}>
+                <div className="bg-gray-800 rounded-lg p-4 max-w-md w-full" onClick={(e) => e.stopPropagation()}>
+                  <h2 className="text-sm font-bold text-white mb-3">📁 파일 연결</h2>
+                  <p className="text-xs text-gray-300 mb-3">데이터를 자동으로 동기화하려면 파일을 연결하세요. 연결하지 않으면 브라우저 로컬에만 저장됩니다.</p>
+                  <div className="flex gap-2">
+                    <button onClick={() => { persistence.triggerSync(); setShowFileConnectPrompt(false); }} className="flex-1 px-3 py-1.5 bg-blue-500 hover:bg-blue-400 text-white rounded text-sm transition">파일 연결</button>
+                    <button onClick={() => setShowFileConnectPrompt(false)} className="flex-1 px-3 py-1.5 bg-gray-600 hover:bg-gray-500 text-white rounded text-sm transition">나중에</button>
+                  </div>
+                </div>
+              </div>
+            )}
+            {showShortcuts && (
+              <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4" onClick={() => setShowShortcuts(false)}>
+                <div className="bg-gray-800 rounded-lg p-4 max-w-md w-full" onClick={(e) => e.stopPropagation()}>
+                  <h2 className="text-sm font-bold text-white mb-3">⌨️ 단축키</h2>
+                  <div className="space-y-2 text-xs text-gray-300">
+                    <div className="flex justify-between"><span>Ctrl+Space</span><span>타이머 시작/정지</span></div>
+                    <div className="flex justify-between"><span>Ctrl+Enter</span><span>완료 토글</span></div>
+                    <div className="flex justify-between"><span>Alt+↑↓</span><span>카드/리스트 순서 변경</span></div>
+                    <div className="flex justify-between"><span>Delete</span><span>삭제</span></div>
+                  </div>
+                  <button onClick={() => setShowShortcuts(false)} className="mt-3 w-full px-3 py-1.5 bg-blue-500 hover:bg-blue-400 text-white rounded text-sm transition">닫기</button>
+                </div>
+              </div>
+            )}
+            <div className="max-w-5xl mx-auto flex">
+              {isSidebarOpen && (
+                <div className="fixed inset-0 bg-black/70 sm:hidden z-20" onClick={() => setIsSidebarOpen(false)} />
+              )}
+              {/* Sidebar */}
+              <div 
+                className={`fixed sm:static inset-y-0 left-0 z-30 w-64 transform ${isSidebarOpen ? "translate-x-0" : "-translate-x-full sm:translate-x-0"} transition-transform duration-200 sm:w-60 bg-gray-900 border-r border-gray-800 px-3 py-2 overflow-visible flex flex-col`}
+                onTouchStart={(e) => {
+                  setTouchStartX(e.touches[0].clientX);
+                  setTouchStartY(e.touches[0].clientY);
+                }}
+                onTouchEnd={(e) => {
+                  if (!touchStartX || !touchStartY) return;
+                  const touchEndX = e.changedTouches[0].clientX;
+                  const touchEndY = e.changedTouches[0].clientY;
+                  const deltaX = touchEndX - touchStartX;
+                  const deltaY = touchEndY - touchStartY;
+                  if (Math.abs(deltaX) > Math.abs(deltaY) && Math.abs(deltaX) > 50) {
+                    if (deltaX < 0) setIsSidebarOpen(false);
+                  }
+                  setTouchStartX(null);
+                  setTouchStartY(null);
+                }}
+              >
+                <div className="flex items-center justify-between mb-2">
+                  <h2 className="text-sm font-semibold text-gray-200">리스트</h2>
+                  <div className="flex items-center gap-2">
+                    <button onClick={() => setListsEditMode((v)=>!v)} className={`text-xs px-1.5 py-0.5 rounded border ${listsEditMode?"border-blue-400 text-blue-300":"border-gray-700 text-gray-400"}`}>{listsEditMode?"완료":"수정"}</button>
+                    <button onClick={() => setIsSidebarOpen(false)} className="sm:hidden text-gray-400 text-xs">닫기</button>
+                  </div>
+                </div>
+                <div className="flex gap-2 mb-2">
+                  <input id="new-list-input" type="text" placeholder="새 리스트" onKeyDown={handleListKeyDown} className="flex-1 px-2 py-1 rounded bg-gray-800 border border-gray-700 text-sm text-gray-100 focus:outline-none focus:border-blue-400"/>
+                </div>
+                <div className="flex-1 space-y-1 p-1" style={{overflowY: 'auto', overflowX: 'visible'}}>
+                  {(lists.length ? lists : [{ id: "default", name: "기본함" }]).map((l, idx) => (
+                    <div
+                      key={l.id}
+                      draggable
+                      onContextMenu={(e) => handleListContextMenu(e, l.id)}
+                      onDragStart={()=>handleListDragStart(l.id)}
+                      onDragOver={handleListDragOver}
+                      onDragEnter={(e)=>handleListDragEnter(e,l.id)}
+                      onDragLeave={handleListDragLeave}
+                      onDrop={()=>handleListDrop(l.id)}
+                      className={`sidebar-list-item flex items-center justify-between px-3 py-2 cursor-pointer text-sm rounded-lg ${selectedListId === l.id ? "bg-blue-600 text-white font-semibold" : "text-gray-300 hover:bg-gray-800"} ${draggingListId===l.id?"opacity-60":""} ${sidebarFocused && selectedListIndex === idx ? "ring-2 ring-blue-400" : ""}`}
+                      onClick={() => setSelectedListId(l.id)}
+                    >
+                      <span className="truncate">{l.name}</span>
+                      {listsEditMode && l.id !== "default" && (
+                        <button onClick={(e) => { e.stopPropagation(); deleteList(l.id); }} className="text-gray-400 hover:text-red-400 text-xs">삭제</button>
+                      )}
+                    </div>
+                  ))}
+                </div>}
+                <div className="hidden sm:flex justify-start pt-2 border-t border-gray-800">
+                  <button
+                    onClick={(e) => { e.stopPropagation(); setShowShortcuts(true); }}
+                    className="h-10 w-10 flex items-center justify-center rounded-full bg-gray-700 hover:bg-gray-600 text-white shadow-lg cursor-pointer"
+                    title="단축키"
+                  >
+                    ⌨️
+                  </button>
+                </div>
+              </div>
+
+              {/* Content */}
+              <div 
+                className="flex-1 sm:pl-6"
+                onTouchStart={(e) => {
+                  if (isSidebarOpen) return;
+                  setTouchStartX(e.touches[0].clientX);
+                  setTouchStartY(e.touches[0].clientY);
+                }}
+                onTouchEnd={(e) => {
+                  if (isSidebarOpen || !touchStartX || !touchStartY) return;
+                  const touchEndX = e.changedTouches[0].clientX;
+                  const touchEndY = e.changedTouches[0].clientY;
+                  const deltaX = touchEndX - touchStartX;
+                  const deltaY = touchEndY - touchStartY;
+                  if (Math.abs(deltaX) > Math.abs(deltaY) && Math.abs(deltaX) > 100) {
+                    if (deltaX > 0 && touchStartX < 50) setIsSidebarOpen(true);
+                  }
+                  setTouchStartX(null);
+                  setTouchStartY(null);
+                }}
+              >
+                {/* Global hidden file input for import on all viewports */}
+                <input
+                  ref={persistence.fileInputRef}
+                  type="file"
+                  accept="application/json,.json"
+                  className="hidden"
+                  onChange={persistence.handleFileSelected}
+                />
+                <div className="sm:hidden p-2">
+                  <div className="flex items-center justify-between gap-2 mb-1.5">
+                    <button onClick={() => setIsSidebarOpen(true)} className="px-2 py-1 rounded border border-gray-700 text-gray-200 text-sm">리스트</button>
+                    <div className="flex items-center gap-1">
+                      <div className="relative">
+                        <button
+                          onClick={(e) => { e.stopPropagation(); setShowDropboxMenu(!showDropboxMenu); }}
+                          className={`h-7 w-7 flex items-center justify-center rounded-full ${dropboxConnected ? 'bg-blue-500/80' : 'bg-gray-700'} text-white`}
+                          title="Dropbox"
+                        >
+                          📦
+                        </button>
+                        {showDropboxMenu && (
+                          <div className="absolute right-0 mt-1 bg-gray-800 border border-gray-700 rounded-lg shadow-lg py-1 z-50 min-w-[120px]" onClick={(e) => e.stopPropagation()}>
+                            {!dropboxConnected ? (
+                              <button onClick={connectDropbox} className="w-full px-3 py-1.5 text-left text-xs text-gray-200 hover:bg-gray-700">연결</button>
+                            ) : (
+                              <>
+                                <button onClick={syncToDropbox} disabled={dropboxSyncing} className="w-full px-3 py-1.5 text-left text-xs text-gray-200 hover:bg-gray-700">업로드</button>
+                                <button onClick={syncFromDropbox} disabled={dropboxSyncing} className="w-full px-3 py-1.5 text-left text-xs text-gray-200 hover:bg-gray-700">다운로드</button>
+                                <button onClick={disconnectDropbox} className="w-full px-3 py-1.5 text-left text-xs text-red-400 hover:bg-gray-700">연결 해제</button>
+                              </>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                      <div className="px-1.5 py-0.5 bg-gray-800 rounded text-xs text-cyan-400 font-semibold">
+                        {formatDuration(getTodayTotalSeconds())}
+                      </div>
+                      <button
+                        onClick={() => setShowWeeklyReport(true)}
+                        className="h-7 w-7 flex items-center justify-center rounded-full bg-purple-500/80 text-white text-xs"
+                        title="주간 리포트"
+                      >
+                        📊
+                      </button>
+                      <button
+                        onClick={() => setPomodoroMode(!pomodoroMode)}
+                        className={`${pomodoroMode ? 'px-1.5 py-0.5 bg-orange-500 text-white' : 'h-7 w-7 bg-transparent'} flex items-center gap-0.5 justify-center rounded-full text-xs`}
+                        title="포모도로"
+                      >
+                        🍅{pomodoroMode && <span className="text-[10px]">ON</span>}
+                      </button>
+                      <button
+                        onClick={persistence.triggerImport}
+                        className="h-7 w-7 flex items-center justify-center rounded-full bg-cyan-500/80 text-white"
+                        title="가져오기"
+                      >
+                        <Download size={12} />
+                      </button>
+                      <div className="flex items-center gap-1">
+                        {persistence.fileHandleRef?.current ? (
+                          persistence.lastSavedAt && <span className="text-xs text-gray-400">{formatRelativeTime(persistence.lastSavedAt)}</span>
+                        ) : (
+                          <span className="text-xs text-gray-400">파일 연결 안됨</span>
+                        )}
+                        <button
+                          onClick={persistence.triggerSync}
+                          className="h-7 w-7 flex items-center justify-center rounded-full bg-blue-500/80 text-white"
+                          title="동기화"
+                          disabled={persistence.isSyncing}
+                        >
+                          <RefreshCcw size={12} className={persistence.isSyncing ? "animate-spin" : ""} />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div className="max-w-3xl mx-auto">
+              <div className="mb-6">
+                  <div className="hidden sm:flex items-center justify-end gap-2">
+                    <div className="relative">
+                      <button
+                        onClick={(e) => { e.stopPropagation(); setShowDropboxMenu(!showDropboxMenu); }}
+                        className={`h-7 w-7 flex items-center justify-center rounded-full ${dropboxConnected ? 'bg-blue-500/80 hover:bg-blue-400' : 'bg-gray-700 hover:bg-gray-600'} text-white transition`}
+                        title="Dropbox"
+                      >
+                        📦
+                      </button>
+                      {showDropboxMenu && (
+                        <div className="absolute right-0 mt-1 bg-gray-800 border border-gray-700 rounded-lg shadow-lg py-1 z-50 min-w-[120px]" onClick={(e) => e.stopPropagation()}>
+                          {!dropboxConnected ? (
+                            <button onClick={connectDropbox} className="w-full px-3 py-1.5 text-left text-xs text-gray-200 hover:bg-gray-700">연결</button>
+                          ) : (
+                            <>
+                              <button onClick={syncToDropbox} disabled={dropboxSyncing} className="w-full px-3 py-1.5 text-left text-xs text-gray-200 hover:bg-gray-700">업로드</button>
+                              <button onClick={syncFromDropbox} disabled={dropboxSyncing} className="w-full px-3 py-1.5 text-left text-xs text-gray-200 hover:bg-gray-700">다운로드</button>
+                              <button onClick={disconnectDropbox} className="w-full px-3 py-1.5 text-left text-xs text-red-400 hover:bg-gray-700">연결 해제</button>
+                            </>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                    <div className="px-2 py-1 bg-gray-800 rounded text-xs text-cyan-400 font-semibold">
+                      오늘 {formatDuration(getTodayTotalSeconds())}
+                    </div>
+                    <button
+                      onClick={() => setShowWeeklyReport(true)}
+                      className="h-7 w-7 flex items-center justify-center rounded-full bg-purple-500/80 hover:bg-purple-400 text-white transition text-xs"
+                      title="주간 리포트"
+                    >
+                      📊
+                    </button>
+                    <button
+                      onClick={() => setPomodoroMode(!pomodoroMode)}
+                      className={`${pomodoroMode ? 'px-1.5 py-0.5 bg-orange-500 text-white' : 'h-7 w-7 bg-transparent'} flex items-center gap-0.5 justify-center rounded-full transition text-xs`}
+                      title="포모도로"
+                    >
+                      🍅{pomodoroMode && <span className="text-[10px]">ON</span>}
+                    </button>
+                    <button
+                      onClick={persistence.triggerImport}
+                      className="h-7 w-7 flex items-center justify-center rounded-full bg-cyan-500/80 hover:bg-cyan-400 text-white transition"
+                      title="가져오기"
+                    >
+                      <Download size={12} />
+                    </button>
+                    <div className="flex items-center gap-1">
+                      {persistence.fileHandleRef?.current ? (
+                        persistence.lastSavedAt && <span className="text-xs text-gray-400">{formatRelativeTime(persistence.lastSavedAt)}</span>
+                      ) : (
+                        <span className="text-xs text-gray-400">파일 연결 안됨</span>
+                      )}
+                      <button
+                        onClick={persistence.triggerSync}
+                        className="h-7 w-7 flex items-center justify-center rounded-full bg-blue-500/80 hover:bg-blue-400 text-white transition"
+                        title="동기화"
+                        disabled={persistence.isSyncing}
+                      >
+                        <RefreshCcw size={12} className={persistence.isSyncing ? "animate-spin" : ""} />
+                      </button>
+                    </div>
+                  </div>
+
+
+                
+              </div>
+
+              <div className="card-blur rounded-lg p-2 sm:p-2.5 mb-3">
+                <div className="flex flex-wrap gap-1.5">
+                  <input
+                    type="text"
+                    placeholder="목표 이름"
+                    value={newGoalName}
+                    onChange={(e) => setNewGoalName(e.target.value)}
+                    onKeyPress={handleKeyPress}
+                    className="flex-1 w-full sm:w-auto px-2 py-1 sm:py-1.5 bg-gray-800 text-gray-100 rounded border border-gray-700 focus:outline-none focus:border-blue-400 text-sm"
+                  />
+                  <input
+                    type="number"
+                    placeholder="시간"
+                    value={newGoalTargetHours}
+                    onChange={(e) => setNewGoalTargetHours(e.target.value)}
+                    onKeyPress={handleKeyPress}
+                    className="w-14 px-2 py-1 sm:py-1.5 bg-gray-800 text-gray-100 rounded border border-gray-700 focus:outline-none focus:border-blue-400 text-sm"
+                  />
+                  <input
+                    type="number"
+                    placeholder="분"
+                    value={newGoalTargetMinutes}
+                    onChange={(e) => setNewGoalTargetMinutes(e.target.value)}
+                    onKeyPress={handleKeyPress}
+                    className="w-14 px-2 py-1 sm:py-1.5 bg-gray-800 text-gray-100 rounded border border-gray-700 focus:outline-none focus:border-blue-400 text-sm"
+                  />
+                  <button
+                    onClick={addGoal}
+                    className="px-2 py-1 sm:py-1.5 bg-blue-500 hover:bg-blue-400 text-white rounded font-semibold flex items-center gap-1 text-xs sm:text-sm"
+                  >
+                    <Plus size={12} /> 추가
+                  </button>
+                </div>
+              </div>
+
+              {todayPendingGoals.length > 0 && showDailySuggestion && (
+                <div className="card-blur rounded-lg p-3 mb-3 border-l-4 border-blue-500">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="text-sm font-semibold text-blue-400">💡 오늘의 목표</span>
+                        <span className="text-xs text-gray-400">{todayPendingGoals.length}개 대기중</span>
+                      </div>
+                      <p className="text-xs text-gray-300 mb-2">아직 작업하지 않은 목표가 있어요. 지금 시작해보세요!</p>
+                      <div className="flex flex-wrap gap-1">
+                        {todayPendingGoals.slice(0, 3).map(g => {
+                          const suggestion = getDailySuggestion(g);
+                          return (
+                            <button
+                              key={g.id}
+                              onClick={() => startTimer(g.id)}
+                              className="text-xs px-2 py-1 bg-blue-500/20 hover:bg-blue-500/30 text-blue-300 rounded border border-blue-500/30 transition"
+                            >
+                              {g.name} {suggestion && `(오늘 ${suggestion})`}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => setShowDailySuggestion(false)}
+                      className="text-gray-500 hover:text-gray-300 text-xs"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              <div className="space-y-3">
+                {filteredGoals.length === 0 ? (
+                  <div className="text-center py-8 text-gray-400 text-sm">목표를 추가해보세요</div>
+                ) : (
+                  <>
+                  {draggingGoalId && (
+                    <div
+                      onDragOver={(e) => e.preventDefault()}
+                      onDrop={() => {
+                        if (draggingGoalId) {
+                          setGoals((prevGoals) => {
+                            const fromIdx = prevGoals.findIndex((g) => g.id === draggingGoalId);
+                            if (fromIdx === -1) return prevGoals;
+                            const next = prevGoals.slice();
+                            const [moved] = next.splice(fromIdx, 1);
+                            next.unshift(moved);
+                            return next;
+                          });
+                          setDraggingGoalId(null);
+                          setDragOverGoalId(null);
+                        }
+                      }}
+                      className="h-8"
+                    />
+                  )}
+                  {sortedGoals.map((goal) => {
+                    const isActive = activeTimer === goal.id;
+                    const extraSeconds = isActive ? timerSeconds : 0;
+                    const effectiveSeconds = goal.totalSeconds + extraSeconds;
+                    const progress = getProgress(goal, effectiveSeconds);
+                    const hours = effectiveSeconds / 3600;
+                    const isComplete = goal.completedAt;
+                    const streak = getStreak(goal);
+                    const workedToday = hasWorkedToday(goal);
+                    const dailySuggestion = getDailySuggestion(goal);
+
+                    return (
+                      <div key={`wrap-${goal.id}`}>
+                        {dragOverGoalId === goal.id && draggingGoalId !== goal.id && dragPosition === 'before' && (
+                          <div className="h-0.5 bg-blue-400 mb-2" />
+                        )}
+                      <div
+                        ref={(el) => cardRefs.current[sortedGoals.indexOf(goal)] = el}
+                        draggable={!['INPUT', 'BUTTON', 'TEXTAREA'].includes(document.activeElement?.tagName)}
+                        onContextMenu={(e) => handleContextMenu(e, goal.id)}
+                        onClick={() => setSelectedCardIndex(sortedGoals.indexOf(goal))}
+                        onMouseDown={(e) => {
+                          if (window.getSelection().toString().length > 0) {
+                            e.currentTarget.draggable = false;
+                          }
+                        }}
+                        onDragStart={(e) => {
+                          if (window.getSelection().toString().length > 0) {
+                            e.preventDefault();
+                            return;
+                          }
+                          if (e.target.tagName === 'INPUT' || e.target.tagName === 'BUTTON' || e.target.tagName === 'TEXTAREA') {
+                            e.preventDefault();
+                            return;
+                          }
+                          handleDragStart(goal.id);
+                        }}
+                        onDragEnd={() => {
+                          setDraggingGoalId(null);
+                          setDragOverGoalId(null);
+                        }}
+                        onDragOver={(e) => e.preventDefault()}
+                        onDragEnter={(e) => handleDragEnter(e, goal.id)}
+                        onDragLeave={handleDragLeave}
+                        onDrop={() => handleDrop(goal.id)}
+                        className={`p-2.5 transition-transform duration-200 hover:-translate-y-0.5 ${
+                          isComplete
+                            ? "card-complete rounded-lg"
+                            : !workedToday && !isComplete
+                            ? "card-today-pending rounded-lg"
+                            : "card-blur rounded-lg"
+                        } ${draggingGoalId === goal.id ? "opacity-60" : ""} ${!sidebarFocused && sortedGoals.indexOf(goal) === selectedCardIndex ? "ring-2 ring-blue-400" : ""}`}
+                      >
+                        <div className="flex justify-between items-start mb-2 gap-1.5">
+                          <div className="flex items-start gap-2 flex-1 min-w-0">
+                            <button
+                              onClick={() => toggleComplete(goal.id)}
+                              className={`text-sm px-2 py-1 rounded border transition flex-shrink-0 ${
+                                goal.completedAt
+                                  ? "border-emerald-400 text-emerald-300 hover:border-emerald-300"
+                                  : "border-gray-600 text-gray-400 hover:border-gray-500"
+                              }`}
+                              title={goal.completedAt ? "완료 취소" : "완료"}
+                            >
+                              ✓
+                            </button>
+                            <div className="flex-1 min-w-0">
+                            <div className="space-y-1.5 min-w-0">
+                              <div className="flex items-center gap-2 min-w-0">
+                                <div
+                                  data-goal-name={goal.id}
+                                  contentEditable
+                                  suppressContentEditableWarning
+                                  onBlur={(e) => updateGoalName(goal.id, e.currentTarget.textContent)}
+                                  onKeyDown={(e) => {
+                                    if (e.key === 'Enter') {
+                                      e.preventDefault();
+                                      e.currentTarget.blur();
+                                    }
+                                  }}
+                                  className={`text-white text-sm font-semibold px-2 py-0.5 cursor-pointer hover:bg-gray-800/50 rounded transition focus:outline-none focus:bg-gray-800 focus:border focus:border-blue-400 ${sortedGoals.indexOf(goal) === selectedCardIndex && selectedFieldIndex === 0 ? "ring-2 ring-yellow-400" : ""}`}
+                                >
+                                  {goal.name || ""}
+                                </div>
+                                {streak > 1 && (
+                                  <span className="text-xs text-orange-400 flex items-center gap-0.5 flex-shrink-0" title={`${streak}일 연속`}>
+                                    🔥{streak}
+                                  </span>
+                                )}
+                                <span className="text-gray-400 text-sm whitespace-nowrap flex-shrink-0">{progress.toFixed(0)}%</span>
+                                {getAchievementBadge(goal) && (
+                                  <span className="text-sm flex-shrink-0">{getAchievementBadge(goal)}</span>
+                                )}
+                              </div>
+                              <div className="flex items-center text-xs text-gray-400 flex-wrap">
+                                {!workedToday && !isComplete && (
+                                  <span className="text-blue-400 whitespace-nowrap mr-1">⏰ 오늘</span>
+                                )}
+                                {dailySuggestion && !isComplete && (
+                                  <span className="text-green-400 whitespace-nowrap mr-1">{dailySuggestion}/d</span>
+                                )}
+                                <span className="whitespace-nowrap">기록 {formatHoursVerbose(hours)} / 목표 <span
+                                  data-goal-hours={goal.id}
+                                  contentEditable
+                                  suppressContentEditableWarning
+                                  onBlur={(e) => {
+                                    const hours = parseFloat(e.currentTarget.textContent) || 0;
+                                    const minutes = Math.round(((goal.targetHours ?? 0) % 1) * 60);
+                                    updateGoalTarget(goal.id, (hours + minutes / 60).toString());
+                                  }}
+                                  onKeyDown={(e) => {
+                                    if (e.key === 'Enter') {
+                                      e.preventDefault();
+                                      e.currentTarget.blur();
+                                    }
+                                  }}
+                                  className={`text-gray-100 cursor-pointer hover:bg-gray-800/50 rounded transition focus:outline-none focus:bg-gray-800 focus:border focus:border-blue-400 px-0.5 ${sortedGoals.indexOf(goal) === selectedCardIndex && selectedFieldIndex === 1 ? "ring-2 ring-yellow-400" : ""}`}
+                                >{Math.floor(goal.targetHours ?? 0)}</span>시간 <span
+                                  data-goal-minutes={goal.id}
+                                  contentEditable
+                                  suppressContentEditableWarning
+                                  onBlur={(e) => {
+                                    const hours = Math.floor(goal.targetHours ?? 0);
+                                    const minutes = parseFloat(e.currentTarget.textContent) || 0;
+                                    updateGoalTarget(goal.id, (hours + minutes / 60).toString());
+                                  }}
+                                  onKeyDown={(e) => {
+                                    if (e.key === 'Enter') {
+                                      e.preventDefault();
+                                      e.currentTarget.blur();
+                                    }
+                                  }}
+                                  className={`text-gray-100 cursor-pointer hover:bg-gray-800/50 rounded transition focus:outline-none focus:bg-gray-800 focus:border focus:border-blue-400 px-0.5 ${sortedGoals.indexOf(goal) === selectedCardIndex && selectedFieldIndex === 2 ? "ring-2 ring-yellow-400" : ""}`}
+                                >{Math.round(((goal.targetHours ?? 0) % 1) * 60)}</span>분</span>
+                                {(goal.completedAt || isComplete) && (
+                                  <span className="text-emerald-300 whitespace-nowrap ml-1">
+                                    {goal.completedAt
+                                      ? `✓ ${new Date(goal.completedAt).toLocaleDateString("ko-KR", {year: '2-digit', month: 'numeric', day: 'numeric'}).replace(/\. /g, '.')}`
+                                      : "✓ 완료"}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                            </div>
+                          </div>
+                          <button
+                            onClick={() => deleteGoal(goal.id)}
+                            className={`text-gray-500 hover:text-red-400 transition p-1 flex-shrink-0 ${sortedGoals.indexOf(goal) === selectedCardIndex && selectedFieldIndex === 3 ? "ring-2 ring-yellow-400 rounded" : ""}`}
+                            title="삭제"
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        </div>
+
+                        <div className="mb-2">
+                          <div className="flex items-center gap-2 mb-1">
+                            <div className="flex-1 h-2 bg-gray-800 rounded-full overflow-hidden">
+                              <div
+                                className={`h-full transition-all duration-300 ${
+                                  isComplete ? "bg-blue-500" : "bg-blue-500"
+                                }`}
+                                style={{ width: `${progress}%` }}
+                              />
+                            </div>
+                            <div className="text-xs font-mono min-w-[60px] text-center">
+                              {isActive ? (
+                                <div>
+                                  <div className="text-cyan-300">{formatTime(timerSeconds)}</div>
+                                  {goal.targetHours && (
+                                    <div className="text-[10px] text-gray-500">
+                                      {(() => {
+                                        const remainingSeconds = Math.max(0, goal.targetHours * 3600 - effectiveSeconds);
+                                        return formatTime(remainingSeconds);
+                                      })()}
+                                    </div>
+                                  )}
+                                  {pomodoroMode && (
+                                    <div className="text-xs font-bold" style={{color: pomodoroPhase === 'work' ? '#fb923c' : '#60a5fa'}}>
+                                      {pomodoroPhase === 'work' ? '🍅작업' : '☕휴식'}
+                                    </div>
+                                  )}
+                                </div>
+                              ) : (
+                                goal.targetHours ? (
+                                  <span className="text-gray-500">{formatTime(Math.max(0, goal.targetHours * 3600 - goal.totalSeconds))}</span>
+                                ) : (
+                                  <span className="text-cyan-300">00:00:00</span>
+                                )
+                              )}
+                            </div>
+                            <div className="flex items-center gap-1">
+                              {isActive && (
+                                <button
+                                  onClick={() => cancelTimer(goal.id)}
+                                  className="px-1.5 py-0.5 rounded-md font-semibold flex items-center gap-0.5 text-xs bg-red-500/90 hover:bg-red-400 text-white transition"
+                                >
+                                  <X size={12} />
+                                </button>
+                              )}
+                              <button
+                                onClick={() => (isActive ? stopTimer(goal.id) : startTimer(goal.id))}
+                                className={`px-1.5 py-0.5 rounded-md font-semibold flex items-center gap-0.5 transition text-xs ${
+                                  isActive
+                                    ? "bg-rose-500 hover:bg-rose-400 text-white"
+                                    : !workedToday && !isComplete
+                                    ? "bg-green-500 hover:bg-green-400 text-white pulse-start"
+                                    : "bg-green-500 hover:bg-green-400 text-white"
+                                } ${sortedGoals.indexOf(goal) === selectedCardIndex && selectedFieldIndex === 4 ? "ring-2 ring-yellow-400" : ""}`}
+                              >
+                                {isActive ? <Pause size={14} /> : <Play size={14} />}
+                              </button>
+                            </div>
+                          </div>
+                          {isActive && (
+                            <input
+                              type="text"
+                              placeholder="메모 추가"
+                              value={timerMemo}
+                              onChange={(e) => setTimerMemo(e.target.value)}
+                              className="w-full px-2 py-0.5 rounded border border-gray-700 bg-gray-800 text-gray-100 focus:outline-none focus:border-blue-400 text-xs"
+                            />
+                          )}
+                        </div>
+                        {goal.todos && goal.todos.length > 0 && (
+                          <div className="mb-2">
+                            <div className="text-xs text-gray-400 mb-1">할일 ({goal.todos.filter(t => !t.done).length}/{goal.todos.length})</div>
+                            <div className="space-y-1">
+                              {(expandedTodos.has(goal.id) ? goal.todos : goal.todos.slice(0, 5)).map((todo) => {
+                                const isEditing = editingTodoId === todo.id;
+                                const isSelected = selectedTodoId === todo.id;
+                                const isTodoTimerActive = activeTimer === goal.id && timerMemo === todo.text;
+                                return (
+                                  <div
+                                    key={todo.id}
+                                    className="flex items-center gap-2 text-xs cursor-pointer hover:bg-gray-800/30 rounded px-1 -mx-1"
+                                    onClick={(e) => {
+                                      if (!isEditing && e.target.tagName !== 'INPUT' && e.target.tagName !== 'BUTTON') {
+                                        setSelectedTodoId(todo.id);
+                                        setEditingTodoId(todo.id);
+                                      }
+                                    }}
+                                    onContextMenu={(e) => {
+                                      e.preventDefault();
+                                      e.stopPropagation();
+                                      setTodoContextMenu({ x: e.clientX, y: e.clientY, goalId: goal.id, todoId: todo.id });
+                                    }}
+                                  >
+                                    <input
+                                      type="checkbox"
+                                      checked={todo.done}
+                                      onChange={() => {
+                                        if (!todo.done) {
+                                          setGoals((prev) => prev.map((g) => {
+                                            if (g.id === goal.id) {
+                                              return {
+                                                ...g,
+                                                todos: g.todos.filter(t => t.id !== todo.id),
+                                                logs: [{ date: new Date().toLocaleDateString("ko-KR"), seconds: 0, memo: todo.text, fromTodo: true }, ...g.logs]
+                                              };
+                                            }
+                                            return g;
+                                          }));
+                                        } else {
+                                          setGoals((prev) => prev.map((g) => g.id === goal.id ? { ...g, todos: g.todos.map((t) => t.id === todo.id ? { ...t, done: !t.done } : t) } : g));
+                                        }
+                                      }}
+                                      className="w-3 h-3"
+                                    />
+                                    {isEditing ? (
+                                      <input
+                                        type="text"
+                                        defaultValue={todo.text}
+                                        autoFocus
+                                        onBlur={(e) => {
+                                          setGoals((prev) => prev.map((g) => g.id === goal.id ? { ...g, todos: g.todos.map((t) => t.id === todo.id ? { ...t, text: e.target.value.trim() || todo.text } : t) } : g));
+                                          setEditingTodoId(null);
+                                        }}
+                                        onKeyDown={(e) => {
+                                          if (e.key === 'Enter') e.target.blur();
+                                          if (e.key === 'Escape') { setEditingTodoId(null); }
+                                        }}
+                                        className="flex-1 px-1 py-0.5 bg-gray-700 text-gray-100 rounded border border-blue-400 focus:outline-none"
+                                      />
+                                    ) : (
+                                      <span
+                                        onClick={() => { setSelectedTodoId(todo.id); setEditingTodoId(todo.id); }}
+                                        className={`flex-1 cursor-pointer hover:text-gray-100 ${todo.done ? 'line-through text-gray-500' : 'text-gray-300'}`}
+                                      >{todo.text}</span>
+                                    )}
+                                    <div className="flex items-center gap-1">
+                                      {isTodoTimerActive && (
+                                        <button
+                                          onClick={(e) => { e.stopPropagation(); cancelTimer(goal.id); }}
+                                          className="px-1.5 py-0.5 rounded-md font-semibold flex items-center gap-0.5 text-xs bg-red-500/90 hover:bg-red-400 text-white transition"
+                                        >
+                                          <X size={12} />
+                                        </button>
+                                      )}
+                                      <button
+                                        onClick={(e) => { e.stopPropagation(); (isTodoTimerActive ? stopTimer(goal.id) : startTimer(goal.id, todo.text)); }}
+                                        className={`px-1.5 py-0.5 rounded-md font-semibold flex items-center gap-0.5 transition text-xs ${
+                                          isTodoTimerActive
+                                            ? "bg-rose-500 hover:bg-rose-400 text-white"
+                                            : "bg-green-500 hover:bg-green-400 text-white"
+                                        }`}
+                                      >
+                                        {isTodoTimerActive ? <Pause size={14} /> : <Play size={14} />}
+                                      </button>
+                                      {isSelected && !isTodoTimerActive && (
+                                        <button
+                                          onClick={(e) => { e.stopPropagation(); setGoals((prev) => prev.map((g) => g.id === goal.id ? { ...g, todos: g.todos.filter((t) => t.id !== todo.id) } : g)); setSelectedTodoId(null); }}
+                                          className="text-red-400 hover:text-red-300 ml-1"
+                                        >
+                                          ×
+                                        </button>
+                                      )}
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                            {goal.todos.length > 5 && (
+                              <div className="text-center mt-1">
+                                <button
+                                  onClick={(e) => { e.stopPropagation(); toggleExpandedTodos(goal.id); }}
+                                  className="text-xs text-gray-400 hover:text-gray-200"
+                                >
+                                  {expandedTodos.has(goal.id) ? "접기" : "더보기"}
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                        <div className="mb-2">
+                          {showAddTodo === goal.id ? (
+                            <div className="flex gap-1">
+                              <input
+                                type="text"
+                                placeholder="할일 입력"
+                                value={newTodoText}
+                                autoFocus
+                                onChange={(e) => setNewTodoText(e.target.value)}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter' && newTodoText.trim()) {
+                                    setGoals((prev) => prev.map((g) => g.id === goal.id ? { ...g, todos: [...(g.todos || []), { id: Date.now(), text: newTodoText.trim(), done: false }] } : g));
+                                    setNewTodoText("");
+                                    setShowAddTodo(null);
+                                  }
+                                  if (e.key === 'Escape') {
+                                    setNewTodoText("");
+                                    setShowAddTodo(null);
+                                  }
+                                }}
+                                className="flex-1 px-2 py-0.5 bg-gray-700 text-gray-100 rounded border border-blue-400 focus:outline-none text-xs"
+                              />
+                              <button
+                                onClick={() => {
+                                  if (newTodoText.trim()) {
+                                    setGoals((prev) => prev.map((g) => g.id === goal.id ? { ...g, todos: [...(g.todos || []), { id: Date.now(), text: newTodoText.trim(), done: false }] } : g));
+                                    setNewTodoText("");
+                                  }
+                                  setShowAddTodo(null);
+                                }}
+                                className="px-2 py-0.5 bg-blue-500 hover:bg-blue-400 text-white rounded text-xs"
+                              >
+                                추가
+                              </button>
+                              <button
+                                onClick={() => {
+                                  setNewTodoText("");
+                                  setShowAddTodo(null);
+                                }}
+                                className="px-2 py-0.5 bg-gray-600 hover:bg-gray-500 text-white rounded text-xs"
+                              >
+                                취소
+                              </button>
+                            </div>
+                          ) : (
+                            <button
+                              onClick={() => setShowAddTodo(goal.id)}
+                              className="text-xs text-gray-400 hover:text-gray-200"
+                            >
+                              + 할일 추가
+                            </button>
+                          )}
+                        </div>
+                        {goal.logs.length > 0 && (
+                          <div>
+                            <div className="flex items-center justify-between mb-1">
+                              <span className="text-xs text-gray-400">기록 ({goal.logs.length})</span>
+                              <button
+                                onClick={() => setShowAddLog(showAddLog === goal.id ? null : goal.id)}
+                                className={`text-xs text-gray-400 hover:text-gray-200 ${sortedGoals.indexOf(goal) === selectedCardIndex && selectedFieldIndex === 5 ? "ring-2 ring-yellow-400 rounded px-1" : ""}`}
+                              >
+                                + 추가
+                              </button>
+                            </div>
+                            <div className="grid grid-cols-2 gap-1">
+                              {((expandedLogsGoals.has(goal.id) || editingLogsGoals.has(goal.id)) ? goal.logs : goal.logs.slice(-6)).map((log, idx) => {
+                                const displayedLogs = (expandedLogsGoals.has(goal.id) || editingLogsGoals.has(goal.id)) ? goal.logs : goal.logs.slice(-6);
+                                const originalIndex = goal.logs.indexOf(displayedLogs[idx]);
+                                const isEditing = editingLogIndex === `${goal.id}-${originalIndex}`;
+                                const fieldOffset = 6 + originalIndex;
+                                return (
+                                  <div
+                                    key={idx}
+                                    className={`bg-gray-800/50 rounded px-1.5 py-0.5 text-xs text-gray-300 cursor-pointer hover:bg-gray-800 ${sortedGoals.indexOf(goal) === selectedCardIndex && selectedFieldIndex === fieldOffset ? "ring-2 ring-yellow-400" : ""}`}
+                                    onClick={(e) => {
+                                      if (!isEditing) {
+                                        e.stopPropagation();
+                                        setEditingLogIndex(`${goal.id}-${originalIndex}`);
+                                        setEditLogMemo(log.memo || "");
+                                        setTimeout(() => {
+                                          const el = document.querySelector('.bg-gray-700[contenteditable="true"]');
+                                          if (el) el.focus();
+                                        }, 0);
+                                      }
+                                    }}
+                                    onContextMenu={(e) => {
+                                      e.preventDefault();
+                                      e.stopPropagation();
+                                      setLogContextMenu({ x: e.clientX, y: e.clientY, goalId: goal.id, logIndex: originalIndex });
+                                    }}
+                                  >
+                                    <div className="flex items-center justify-between">
+                                      <div className="flex items-center gap-1">
+                                        <span className="text-gray-400">{log.date.split('.')[1]}/{log.date.split('.')[2]}</span>
+                                        {log.fromTodo ? (
+                                          <span className="ml-1 px-1 py-0.5 bg-purple-500/30 text-purple-300 rounded text-[10px]" onClick={(e) => e.stopPropagation()}>할일</span>
+                                        ) : (
+                                          <span className="ml-1 text-cyan-400">+{formatHoursVerbose(log.seconds / 3600)}</span>
+                                        )}
+                                      </div>
+                                      <div className="flex items-center gap-1">
+                                        {isEditing && log.fromTodo && (
+                                          <button
+                                            onMouseDown={(e) => {
+                                              e.stopPropagation();
+                                              e.preventDefault();
+                                              setGoals((prev) => prev.map((g) => {
+                                                if (g.id === goal.id) {
+                                                  return {
+                                                    ...g,
+                                                    todos: [...(g.todos || []), { id: Date.now(), text: log.memo, done: false }],
+                                                    logs: g.logs.filter((_, i) => i !== originalIndex)
+                                                  };
+                                                }
+                                                return g;
+                                              }));
+                                            }}
+                                            className="text-purple-400 hover:text-purple-300"
+                                          >
+                                            <Undo2 size={12} />
+                                          </button>
+                                        )}
+                                        {isEditing && (
+                                          <button
+                                            onMouseDown={(e) => {
+                                              e.stopPropagation();
+                                              e.preventDefault();
+                                              deleteGoalLog(goal.id, originalIndex);
+                                              setEditingLogIndex(null);
+                                            }}
+                                            className="text-red-400 hover:text-red-300"
+                                          >
+                                            ×
+                                          </button>
+                                        )}
+                                      </div>
+                                    </div>
+                                    {isEditing ? (
+                                      <div
+                                        contentEditable
+                                        suppressContentEditableWarning
+                                        onClick={(e) => e.stopPropagation()}
+                                        onBlur={(e) => {
+                                          updateLogMemo(goal.id, originalIndex, e.currentTarget.textContent);
+                                          setEditingLogIndex(null);
+                                        }}
+                                        onKeyDown={(e) => {
+                                          if (e.key === 'Enter') {
+                                            e.preventDefault();
+                                            e.currentTarget.blur();
+                                          } else if (e.key === 'Escape') {
+                                            e.preventDefault();
+                                            e.currentTarget.textContent = log.memo || "-";
+                                            e.currentTarget.blur();
+                                            setEditingLogIndex(null);
+                                          }
+                                        }}
+                                        className="mt-0.5 text-xs text-gray-100 bg-gray-700 rounded px-1 focus:outline-none focus:border focus:border-blue-400"
+                                      >
+                                        {log.memo || "-"}
+                                      </div>
+                                    ) : (
+                                      <div className="mt-0.5 text-xs text-gray-300">
+                                        {log.memo || "-"}
+                                      </div>
+                                    )}
+                                  </div>
+                                );
+                              })}
+                            </div>
+                            {goal.logs.length > 6 && !editingLogsGoals.has(goal.id) && (
+                              <div className="text-center mt-1">
+                                <button
+                                  onClick={() => toggleExpandedLogs(goal.id)}
+                                  className={`text-xs text-gray-400 hover:text-gray-200 ${sortedGoals.indexOf(goal) === selectedCardIndex && selectedFieldIndex === 6 + ((expandedLogsGoals.has(goal.id) || editingLogsGoals.has(goal.id)) ? goal.logs : goal.logs.slice(-6)).length ? "ring-2 ring-yellow-400 rounded px-1" : ""}`}
+                                >
+                                  {expandedLogsGoals.has(goal.id) ? "접기" : "더보기"}
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                        {goal.logs.length === 0 && (
+                          <div>
+                            <div className="flex items-center justify-between mb-1">
+                              <span className="text-xs text-gray-400">기록 (0)</span>
+                              <button
+                                onClick={() => setShowAddLog(showAddLog === goal.id ? null : goal.id)}
+                                className={`text-xs text-gray-400 hover:text-gray-200 ${sortedGoals.indexOf(goal) === selectedCardIndex && selectedFieldIndex === 5 ? "ring-2 ring-yellow-400 rounded px-1" : ""}`}
+                              >
+                                + 추가
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                        {showAddLog === goal.id && (
+                          <div className="bg-gray-800/50 rounded p-1.5 mt-2">
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <input
+                                type="date"
+                                value={newLogDate || new Date().toISOString().split('T')[0]}
+                                onChange={(e) => setNewLogDate(e.target.value)}
+                                onKeyPress={(e) => handleLogKeyPress(e, goal.id)}
+                                className="px-1.5 py-0.5 rounded border border-gray-700 bg-gray-700 text-gray-100 focus:outline-none focus:border-blue-400 text-xs"
+                              />
+                              <input
+                                type="number"
+                                placeholder="시간"
+                                value={newLogHours}
+                                onChange={(e) => setNewLogHours(e.target.value)}
+                                onKeyPress={(e) => handleLogKeyPress(e, goal.id)}
+                                className="w-12 px-1.5 py-0.5 rounded border border-gray-700 bg-gray-700 text-gray-100 focus:outline-none focus:border-blue-400 text-xs"
+                              />
+                              <span className="text-gray-400 text-xs">시간</span>
+                              <input
+                                type="number"
+                                placeholder="분"
+                                value={newLogMinutes}
+                                onChange={(e) => setNewLogMinutes(e.target.value)}
+                                onKeyPress={(e) => handleLogKeyPress(e, goal.id)}
+                                className="w-12 px-1.5 py-0.5 rounded border border-gray-700 bg-gray-700 text-gray-100 focus:outline-none focus:border-blue-400 text-xs"
+                              />
+                              <span className="text-gray-400 text-xs">분</span>
+                              <input
+                                type="text"
+                                placeholder="메모 추가"
+                                value={newLogMemo}
+                                onChange={(e) => setNewLogMemo(e.target.value)}
+                                onKeyPress={(e) => handleLogKeyPress(e, goal.id)}
+                                className="flex-1 min-w-[100px] px-1.5 py-0.5 rounded border border-gray-700 bg-gray-700 text-gray-100 focus:outline-none focus:border-blue-400 text-xs"
+                              />
+                              <button
+                                onClick={() => addManualLog(goal.id)}
+                                className="px-2 py-0.5 bg-blue-500 hover:bg-blue-400 text-white rounded text-xs transition"
+                              >
+                                추가
+                              </button>
+                              <button
+                                onClick={() => {
+                                  setShowAddLog(null);
+                                  setNewLogHours("");
+                                  setNewLogMinutes("");
+                                  setNewLogDate("");
+                                  setNewLogMemo("");
+                                }}
+                                className="px-2 py-0.5 bg-gray-600 hover:bg-gray-500 text-white rounded text-xs transition"
+                              >
+                                취소
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                      {dragOverGoalId === goal.id && draggingGoalId !== goal.id && dragPosition === 'after' && (
+                        <div className="h-0.5 bg-blue-400 mt-2" />
+                      )}
+                      </div>
+                    );
+                  })}
+                  {draggingGoalId && (
+                    <div
+                      onDragOver={(e) => e.preventDefault()}
+                      onDrop={() => {
+                        if (draggingGoalId) {
+                          setGoals((prevGoals) => {
+                            const fromIdx = prevGoals.findIndex((g) => g.id === draggingGoalId);
+                            if (fromIdx === -1) return prevGoals;
+                            const next = prevGoals.slice();
+                            const [moved] = next.splice(fromIdx, 1);
+                            next.push(moved);
+                            return next;
+                          });
+                          setDraggingGoalId(null);
+                          setDragOverGoalId(null);
+                        }
+                      }}
+                      className="h-8"
+                    />
+                  )}
+                  </>
+                )}
+              </div>
+
+              {filteredGoals.length > 0 && (
+                <div className="mt-3 card-blur rounded-lg p-2.5">
+                  <h3 className="text-sm font-semibold text-white mb-2">전체 통계</h3>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                    <div className="text-center">
+                      <p className="text-gray-400 text-sm">총 투자 시간</p>
+                      <p className="text-base font-semibold text-cyan-400">
+                        {formatDuration(filteredGoals.reduce((acc, goal) => acc + goal.totalSeconds, 0))}
+                      </p>
+                    </div>
+                    <div className="text-center">
+                      <p className="text-gray-400 text-sm">총 목표 시간</p>
+                      <p className="text-base font-semibold text-blue-400">
+                        {formatHoursVerbose(filteredGoals.reduce((acc, goal) => acc + goal.targetHours, 0))}
+                      </p>
+                    </div>
+                    <div className="text-center">
+                      <p className="text-gray-400 text-sm">진행 목표</p>
+                      <p className="text-base font-semibold text-green-400">
+                        {filteredGoals.filter((goal) => getProgress(goal) >= 100).length}/{filteredGoals.length}
+                      </p>
+                    </div>
+                    <div className="text-center">
+                      <p className="text-gray-400 text-sm">평균 진행률</p>
+                      <p className="text-base font-semibold text-purple-400">
+                        {(filteredGoals.reduce((acc, goal) => acc + getProgress(goal), 0) / filteredGoals.length).toFixed(0)}%
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+        );
+      }
+
+      const root = createRoot(document.getElementById("root"));
+      root.render(<GoalTracker />);
+    </script>
+  </body>
+</html>

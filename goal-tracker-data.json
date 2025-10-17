@@ -1,0 +1,184 @@
+{
+  "syncedAt": "2025-10-17T10:09:31.132Z",
+  "goals": [
+    {
+      "id": 1760692234452,
+      "name": "영어",
+      "targetHours": 50,
+      "totalSeconds": 0,
+      "logs": [],
+      "createdAt": "2025-10-17T09:10:34.452Z",
+      "completedAt": null,
+      "listId": "default"
+    },
+    {
+      "id": 1760684375205,
+      "name": "일단 담주 설계 목록 작성",
+      "targetHours": 0.3333333333333333,
+      "totalSeconds": 4338,
+      "logs": [
+        {
+          "date": "2025. 10. 17.",
+          "seconds": 3600,
+          "memo": ""
+        },
+        {
+          "date": "2025. 10. 17.",
+          "seconds": 110,
+          "memo": ""
+        },
+        {
+          "date": "2025. 10. 17.",
+          "seconds": 510,
+          "memo": ""
+        },
+        {
+          "date": "2025. 10. 17.",
+          "seconds": 118,
+          "memo": ""
+        }
+      ],
+      "createdAt": "2025-10-17T06:59:35.205Z",
+      "completedAt": null,
+      "listId": "list-1760431459862"
+    },
+    {
+      "id": 1760496459191,
+      "name": "국보디자인 답변",
+      "targetHours": 0.1,
+      "totalSeconds": 360,
+      "logs": [
+        {
+          "date": "2025. 10. 15.",
+          "seconds": 360
+        }
+      ],
+      "createdAt": "2025-10-15T02:47:39.191Z",
+      "listId": "list-1760431459862",
+      "completedAt": "2025-10-17T06:54:21.829Z",
+      "executed": false,
+      "executedAt": null
+    },
+    {
+      "id": 1760692528180,
+      "name": "요거 수정",
+      "targetHours": 40,
+      "totalSeconds": 153,
+      "logs": [
+        {
+          "date": "2025. 10. 17.",
+          "seconds": 153,
+          "memo": " 오늘의 목표 해서 순서 변경으로 내려가면 포커스 따라 내려가야지, 그리고 타이머 집중 중이면 포커스 거기 고정돼야지. 그리고 할일리스트도 있음 좋겠고,  왜 노란색 잡히지 모바일에서, 모바일에서 리스트 떴을 때 스와이프로 밀어서 넣게 할 수 있으면 좋겠고, 껐다켜면 무조건 파일연결 뜨고"
+        }
+      ],
+      "createdAt": "2025-10-17T09:15:28.180Z",
+      "completedAt": null,
+      "listId": "default"
+    },
+    {
+      "id": 1760668859921,
+      "name": "일어",
+      "targetHours": 49.5,
+      "totalSeconds": 2584,
+      "logs": [
+        {
+          "date": "2025. 10. 17.",
+          "seconds": 1054,
+          "memo": "다 이루어질 지니스"
+        },
+        {
+          "date": "2025. 10. 17.",
+          "seconds": 150,
+          "memo": "-"
+        },
+        {
+          "date": "2025. 10. 14.",
+          "seconds": 1380,
+          "memo": "-"
+        }
+      ],
+      "createdAt": "2025-10-17T02:40:59.921Z",
+      "completedAt": null,
+      "listId": "default",
+      "executed": false,
+      "executedAt": null
+    },
+    {
+      "id": 1760675967803,
+      "name": "특허 마무리",
+      "targetHours": 17,
+      "totalSeconds": 1800,
+      "logs": [
+        {
+          "date": "2025. 10. 16.",
+          "seconds": 1800,
+          "memo": "-"
+        }
+      ],
+      "createdAt": "2025-10-17T04:39:27.803Z",
+      "completedAt": null,
+      "listId": "default"
+    },
+    {
+      "id": 1760429530493,
+      "name": "11",
+      "targetHours": 1,
+      "totalSeconds": 0,
+      "logs": [],
+      "createdAt": "2025-10-14T08:12:10.493Z",
+      "listId": "list-1760429527423"
+    },
+    {
+      "id": 1760427447426,
+      "name": "`11",
+      "targetHours": 11,
+      "totalSeconds": 0,
+      "logs": [],
+      "createdAt": "2025-10-14T07:37:27.426Z",
+      "listId": "list-1760427437701"
+    },
+    {
+      "id": 1760426608375,
+      "name": "ㅁㅁ",
+      "targetHours": 1,
+      "totalSeconds": 0,
+      "logs": [],
+      "createdAt": "2025-10-14T07:23:28.375Z",
+      "listId": "list-1760426604039"
+    },
+    {
+      "id": 1760426436089,
+      "name": "11",
+      "targetHours": 1,
+      "totalSeconds": 0,
+      "logs": [],
+      "createdAt": "2025-10-14T07:20:36.089Z",
+      "listId": "list-1760426429678"
+    },
+    {
+      "id": 1760426030494,
+      "name": "dd",
+      "targetHours": 0.001,
+      "totalSeconds": 4,
+      "logs": [
+        {
+          "date": "2025. 10. 14.",
+          "seconds": 4
+        }
+      ],
+      "createdAt": "2025-10-14T07:13:50.494Z",
+      "listId": "list-1760425955541"
+    }
+  ],
+  "lists": [
+    {
+      "id": "default",
+      "name": "기본함"
+    },
+    {
+      "id": "list-1760431459862",
+      "name": "KMW"
+    }
+  ],
+  "selectedListId": "default"
+}
