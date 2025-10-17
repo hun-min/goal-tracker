@@ -19,18 +19,23 @@ export default async function handler(req, res) {
       });
       res.status(200).json({ success: true });
     } else if (action === 'pull') {
-      const response = await dbx.filesDownload({ path: '/goals.json' });
-      const fileContent = response.result.fileBinary.toString();
-      const parsed = JSON.parse(fileContent);
-      res.status(200).json(parsed);
+      try {
+        const response = await dbx.filesDownload({ path: '/goals.json' });
+        const fileBlob = response.result.fileBlob;
+        const fileContent = await fileBlob.text();
+        const parsed = JSON.parse(fileContent);
+        res.status(200).json(parsed);
+      } catch (downloadError) {
+        if (downloadError.status === 409) {
+          res.status(200).json({ goals: [], lists: [{ id: 'default', name: '기본함' }], selectedListId: 'default' });
+        } else {
+          throw downloadError;
+        }
+      }
     } else {
       res.status(400).json({ error: 'Invalid action' });
     }
   } catch (error) {
-    if (error.status === 409) {
-      res.status(404).json({ error: 'File not found' });
-    } else {
-      res.status(500).json({ error: 'Sync failed' });
-    }
+    res.status(500).json({ error: 'Sync failed', message: error.message });
   }
 }
