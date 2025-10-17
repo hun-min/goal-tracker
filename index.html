@@ -535,9 +535,16 @@
                     if (dropboxData.goals) setGoals(dropboxData.goals);
                     if (dropboxData.lists) setLists(dropboxData.lists);
                     if (dropboxData.selectedListId) setSelectedListId(dropboxData.selectedListId);
-                  } else if (localTime > dropboxTime) {
+                  } else if (localTime > dropboxTime && localParsed?.goals) {
                     // Local is newer, upload
-                    const payload = { goals, lists, selectedListId };
+                    const localListsData = localStorage.getItem(LISTS_STORAGE_KEY);
+                    const localListsParsed = localListsData ? JSON.parse(localListsData) : {};
+                    const payload = { 
+                      goals: localParsed.goals, 
+                      lists: localListsParsed.lists || [], 
+                      selectedListId: localListsParsed.selectedListId,
+                      savedAt: localParsed.savedAt
+                    };
                     await fetch('/api/dropbox/sync', {
                       method: 'POST',
                       headers: { 'Content-Type': 'application/json' },
