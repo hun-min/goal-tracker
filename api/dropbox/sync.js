@@ -25,16 +25,18 @@ export default async function handler(req, res) {
         const parsed = JSON.parse(fileContent);
         res.status(200).json(parsed);
       } catch (downloadError) {
+        console.error('Download error:', downloadError);
         if (downloadError.status === 409) {
           res.status(200).json({ goals: [], lists: [{ id: 'default', name: '기본함' }], selectedListId: 'default' });
         } else {
-          throw downloadError;
+          res.status(500).json({ error: 'Download failed', message: downloadError.message, status: downloadError.status });
         }
       }
     } else {
       res.status(400).json({ error: 'Invalid action' });
     }
   } catch (error) {
+    console.error('Sync error:', error);
     res.status(500).json({ error: 'Sync failed', message: error.message });
   }
 }

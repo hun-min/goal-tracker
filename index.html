@@ -628,12 +628,18 @@
               body: JSON.stringify({ action: 'pull' })
             });
             const data = await res.json();
+            if (data.error) {
+              console.error('Dropbox download error:', data);
+              if (!silent) alert(`✗ 다운로드 실패: ${data.message || data.error}`);
+              return;
+            }
             if (data.goals) setGoals(data.goals);
             if (data.lists) setLists(data.lists);
             if (data.selectedListId) setSelectedListId(data.selectedListId);
             setLastDropboxSync(Date.now());
             if (!silent) alert('✓ Dropbox 다운로드 완료');
           } catch (err) {
+            console.error('Dropbox sync error:', err);
             if (!silent) alert('✗ 다운로드 실패: ' + (err.message || '알 수 없는 오류'));
           } finally {
             setDropboxSyncing(false);
