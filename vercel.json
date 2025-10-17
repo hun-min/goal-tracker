@@ -1,5 +1,5 @@
 {
   "rewrites": [
-    { "source": "/((?!api|manifest\.json).*)", "destination": "/index.html" }
+    { "source": "/((?!api|manifest\\.json).*)", "destination": "/index.html" }
   ]
 }
