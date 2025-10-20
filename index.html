@@ -163,8 +163,13 @@
           }
         }, [setGoals]);
 
+        const goalsInitializedRef = useRef(false);
         useEffect(() => {
           if (!hasInitializedRef.current) return;
+          if (!goalsInitializedRef.current) {
+            goalsInitializedRef.current = true;
+            return;
+          }
           try {
             const payload = JSON.stringify({ goals, savedAt: new Date().toISOString() });
             localStorage.setItem(STORAGE_KEY, payload);
@@ -666,6 +671,17 @@
             }
             const data = response.contents ? JSON.parse(response.contents) : null;
             console.log('[DOWNLOAD] Parsed data - goals:', data?.goals?.length, 'lists:', data?.lists?.length);
+            
+            // 안전장치: 빈 데이터로 덮어쓰기 방지
+            const dropboxHasData = data?.goals && data.goals.length > 0;
+            const localHasData = goals && goals.length > 0;
+            
+            if (!dropboxHasData && localHasData) {
+              if (!silent) alert('⚠️ Dropbox 데이터가 비어있어 로컬 데이터를 유지합니다.');
+              setDropboxSyncing(false);
+              return;
+            }
+            
             if (data?.goals) setGoals(data.goals);
             if (data?.lists) setLists(data.lists);
             if (data?.selectedListId) setSelectedListId(data.selectedListId);
