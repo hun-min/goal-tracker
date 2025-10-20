@@ -5,7 +5,7 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  const token = req.cookies?.dropbox_access_token;
+  const token = req.cookies?.dropbox_token;
   if (!token) {
     return res.status(401).json({ error: 'Dropbox not connected' });
   }
