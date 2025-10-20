@@ -547,8 +547,8 @@
                     const dropboxHasData = dropboxData?.goals && dropboxData.goals.length > 0;
                     const localHasData = localParsed?.goals && localParsed.goals.length > 0;
                     
-                    if (dropboxTime > localTime && dropboxHasData) {
-                      // Dropbox가 최신이고 데이터가 있을 때만 적용
+                    if (dropboxHasData && (!localHasData || dropboxTime > localTime)) {
+                      // Dropbox에 데이터가 있고 (로컬이 비어있거나 Dropbox가 최신)
                       setGoals(dropboxData.goals);
                       if (dropboxData.lists) setLists(dropboxData.lists);
                       if (dropboxData.selectedListId) setSelectedListId(dropboxData.selectedListId);
