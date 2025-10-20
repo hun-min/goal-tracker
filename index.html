@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="ko">
   <head>
     <meta charset="UTF-8" />
@@ -6,7 +6,7 @@
     <title>Targeted time</title>
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='20' fill='%233b82f6'/><circle cx='50' cy='50' r='30' fill='white'/><circle cx='50' cy='50' r='15' fill='%233b82f6'/></svg>" type="image/svg+xml" />
     <link rel="manifest" href="/manifest.json" />
-    <meta name="theme-color" content="#000000" />
+    <meta name="theme-color" content="#3b82f6" />
     <link
       rel="stylesheet"
       href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css"
@@ -495,6 +495,9 @@
         const [selectedTodoId, setSelectedTodoId] = useState(null);
         const [showAddTodo, setShowAddTodo] = useState(null);
         const [newTodoText, setNewTodoText] = useState("");
+        const [showAddTodoTime, setShowAddTodoTime] = useState(null);
+        const [todoTimeHours, setTodoTimeHours] = useState("");
+        const [todoTimeMinutes, setTodoTimeMinutes] = useState("");
         const [draggingGoalId, setDraggingGoalId] = useState(null);
         const [dragOverGoalId, setDragOverGoalId] = useState(null);
         const [dragPosition, setDragPosition] = useState('before'); // 'before' or 'after'
@@ -1014,9 +1017,16 @@
               prevGoals.map((goal) => {
                 if (goal.id === goalId) {
                   const newTotalSeconds = goal.totalSeconds + timerSeconds;
+                  const updatedTodos = goal.todos?.map(t => {
+                    if (t.text === timerMemo && t.estimatedSeconds > 0) {
+                      return { ...t, spentSeconds: (t.spentSeconds || 0) + timerSeconds };
+                    }
+                    return t;
+                  });
                   return {
                     ...goal,
                     totalSeconds: newTotalSeconds,
+                    todos: updatedTodos || goal.todos,
                     logs: [
                       {
                         date: new Date().toLocaleDateString("ko-KR"),
@@ -1473,6 +1483,7 @@ localStorage.removeItem('timer-state');
             setLogContextMenu(null);
             setEditingLogIndex(null);
             setShowDropboxMenu(false);
+            setSelectedTodoId(null);
           };
           document.addEventListener('click', handleClick);
           return () => document.removeEventListener('click', handleClick);
@@ -2512,13 +2523,7 @@ localStorage.removeItem('timer-state');
                                 return (
                                   <div
                                     key={todo.id}
-                                    className="flex items-center gap-2 text-xs cursor-pointer hover:bg-gray-800/30 rounded px-1 -mx-1"
-                                    onClick={(e) => {
-                                      if (!isEditing && e.target.tagName !== 'INPUT' && e.target.tagName !== 'BUTTON') {
-                                        setSelectedTodoId(todo.id);
-                                        setEditingTodoId(todo.id);
-                                      }
-                                    }}
+                                    className="flex items-center gap-1 text-xs hover:bg-gray-800/30 rounded px-1 -mx-1"
                                     onContextMenu={(e) => {
                                       e.preventDefault();
                                       e.stopPropagation();
@@ -2528,6 +2533,7 @@ localStorage.removeItem('timer-state');
                                     <input
                                       type="checkbox"
                                       checked={todo.done}
+                                      onClick={(e) => e.stopPropagation()}
                                       onChange={() => {
                                         if (!todo.done) {
                                           setGoals((prev) => prev.map((g) => {
@@ -2554,7 +2560,6 @@ localStorage.removeItem('timer-state');
                                         onBlur={(e) => {
                                           setGoals((prev) => prev.map((g) => g.id === goal.id ? { ...g, todos: g.todos.map((t) => t.id === todo.id ? { ...t, text: e.target.value.trim() || todo.text } : t) } : g));
                                           setEditingTodoId(null);
-                                          setSelectedTodoId(null);
                                         }}
                                         onKeyDown={(e) => {
                                           if (e.key === 'Enter') e.target.blur();
@@ -2563,39 +2568,67 @@ localStorage.removeItem('timer-state');
                                         className="flex-1 px-1 py-0.5 bg-gray-700 text-gray-100 rounded border border-blue-400 focus:outline-none"
                                       />
                                     ) : (
+                                      <>
                                       <span
-                                        onClick={() => { setSelectedTodoId(todo.id); setEditingTodoId(todo.id); }}
+                                        onClick={(e) => { e.stopPropagation(); setSelectedTodoId(todo.id); setEditingTodoId(todo.id); }}
                                         className={`flex-1 cursor-pointer hover:text-gray-100 ${todo.done ? 'line-through text-gray-500' : 'text-gray-300'}`}
                                       >{todo.text}</span>
+                                      {todo.estimatedSeconds > 0 && (
+                                        <div className="text-xs font-mono text-center min-w-[60px]">
+                                          {isTodoTimerActive ? (
+                                            <>
+                                              <div className="text-cyan-300">{formatTime((todo.spentSeconds || 0) + timerSeconds)}</div>
+                                              <div className="text-[10px] text-gray-500">{formatTime(Math.max(0, todo.estimatedSeconds - (todo.spentSeconds || 0) - timerSeconds))}</div>
+                                            </>
+                                          ) : (
+                                            <span className="text-gray-500">{formatTime(Math.max(0, todo.estimatedSeconds - (todo.spentSeconds || 0)))}</span>
+                                          )}
+                                        </div>
+                                      )}
+                                      </>
                                     )}
-                                    <div className="flex items-center gap-1">
-                                      {isTodoTimerActive && (
-                                        <button
-                                          onClick={(e) => { e.stopPropagation(); cancelTimer(goal.id); }}
-                                          className="px-1.5 py-0.5 rounded-md font-semibold flex items-center gap-0.5 text-xs bg-red-500/90 hover:bg-red-400 text-white transition"
-                                        >
-                                          <X size={12} />
-                                        </button>
-                                      )}
+                                    {isTodoTimerActive && (
                                       <button
-                                        onClick={(e) => { e.stopPropagation(); (isTodoTimerActive ? stopTimer(goal.id) : startTimer(goal.id, todo.text)); }}
-                                        className={`px-1.5 py-0.5 rounded-md font-semibold flex items-center gap-0.5 transition text-xs ${
-                                          isTodoTimerActive
-                                            ? "bg-rose-500 hover:bg-rose-400 text-white"
-                                            : "bg-green-500 hover:bg-green-400 text-white"
-                                        }`}
+                                        onClick={(e) => { e.stopPropagation(); cancelTimer(goal.id); }}
+                                        className="px-1.5 py-0.5 rounded-md font-semibold flex items-center gap-0.5 text-xs bg-red-500/90 hover:bg-red-400 text-white transition"
                                       >
-                                        {isTodoTimerActive ? <Pause size={14} /> : <Play size={14} />}
+                                        <X size={12} />
                                       </button>
-                                      {isSelected && !isTodoTimerActive && (
-                                        <button
-                                          onClick={(e) => { e.stopPropagation(); if (window.confirm('이 할일을 삭제할까요?')) { setGoals((prev) => prev.map((g) => g.id === goal.id ? { ...g, todos: g.todos.filter((t) => t.id !== todo.id) } : g)); setSelectedTodoId(null); } }}
-                                          className="text-red-400 hover:text-red-300 ml-1"
-                                        >
-                                          ×
-                                        </button>
-                                      )}
-                                    </div>
+                                    )}
+                                    <button
+                                      onClick={(e) => { e.stopPropagation(); (isTodoTimerActive ? stopTimer(goal.id) : startTimer(goal.id, todo.text)); }}
+                                      className={`px-1.5 py-0.5 rounded-md font-semibold flex items-center gap-0.5 transition text-xs ${
+                                        isTodoTimerActive
+                                          ? "bg-rose-500 hover:bg-rose-400 text-white"
+                                          : "bg-green-500 hover:bg-green-400 text-white"
+                                      }`}
+                                    >
+                                      {isTodoTimerActive ? <Pause size={14} /> : <Play size={14} />}
+                                    </button>
+                                    {!isTodoTimerActive && (isSelected || isEditing) && (
+                                      <>
+                                      <button
+                                        onClick={(e) => { 
+                                          e.stopPropagation(); 
+                                          const currentHours = Math.floor((todo.estimatedSeconds || 0) / 3600);
+                                          const currentMinutes = Math.floor(((todo.estimatedSeconds || 0) % 3600) / 60);
+                                          setTodoTimeHours(currentHours.toString());
+                                          setTodoTimeMinutes(currentMinutes.toString());
+                                          setShowAddTodoTime(todo.id); 
+                                        }}
+                                        className="text-blue-400 hover:text-blue-300 ml-1"
+                                        title="시간 설정"
+                                      >
+                                        ⏱
+                                      </button>
+                                      <button
+                                        onClick={(e) => { e.stopPropagation(); if (window.confirm('이 할일을 삭제할까요?')) { setGoals((prev) => prev.map((g) => g.id === goal.id ? { ...g, todos: g.todos.filter((t) => t.id !== todo.id) } : g)); setSelectedTodoId(null); } }}
+                                        className="text-red-400 hover:text-red-300 ml-1"
+                                      >
+                                        ×
+                                      </button>
+                                      </>
+                                    )}
                                   </div>
                                 );
                               })}
@@ -2605,6 +2638,62 @@ localStorage.removeItem('timer-state');
                             <div className="text-xs text-gray-400 mb-1">할일 (0)</div>
                           )}
                         </div>
+                        {showAddTodoTime && goal.todos?.some(t => t.id === showAddTodoTime) && (
+                          <div className="bg-gray-800/50 rounded p-1.5 mt-1 mb-1">
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <input
+                                type="number"
+                                placeholder="시간"
+                                value={todoTimeHours}
+                                onChange={(e) => setTodoTimeHours(e.target.value)}
+                                className="w-12 px-1.5 py-0.5 rounded border border-gray-700 bg-gray-700 text-gray-100 focus:outline-none focus:border-blue-400 text-xs"
+                              />
+                              <span className="text-gray-400 text-xs">시간</span>
+                              <input
+                                type="number"
+                                placeholder="분"
+                                value={todoTimeMinutes}
+                                onChange={(e) => setTodoTimeMinutes(e.target.value)}
+                                className="w-12 px-1.5 py-0.5 rounded border border-gray-700 bg-gray-700 text-gray-100 focus:outline-none focus:border-blue-400 text-xs"
+                              />
+                              <span className="text-gray-400 text-xs">분</span>
+                              <button
+                                onClick={() => {
+                                  const hours = parseFloat(todoTimeHours) || 0;
+                                  const minutes = parseFloat(todoTimeMinutes) || 0;
+                                  const totalSeconds = hours * 3600 + minutes * 60;
+                                  if (totalSeconds >= 0) {
+                                    setGoals((prev) => prev.map((g) => {
+                                      if (g.id === goal.id) {
+                                        return {
+                                          ...g,
+                                          todos: g.todos.map(t => t.id === showAddTodoTime ? { ...t, estimatedSeconds: totalSeconds } : t)
+                                        };
+                                      }
+                                      return g;
+                                    }));
+                                    setTodoTimeHours("");
+                                    setTodoTimeMinutes("");
+                                    setShowAddTodoTime(null);
+                                  }
+                                }}
+                                className="px-2 py-0.5 bg-blue-500 hover:bg-blue-400 text-white rounded text-xs transition"
+                              >
+                                확인
+                              </button>
+                              <button
+                                onClick={() => {
+                                  setTodoTimeHours("");
+                                  setTodoTimeMinutes("");
+                                  setShowAddTodoTime(null);
+                                }}
+                                className="px-2 py-0.5 bg-gray-600 hover:bg-gray-500 text-white rounded text-xs transition"
+                              >
+                                취소
+                              </button>
+                            </div>
+                          </div>
+                        )}
                         <div>
                           {showAddTodo === goal.id ? (
                             <div className="flex gap-1 mb-1 mt-1">
