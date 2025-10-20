@@ -657,17 +657,18 @@
               body: JSON.stringify({ mode: 'pull' })
             });
             console.log('[DOWNLOAD] Response status:', res.status);
-            const data = await res.json();
-            console.log('[DOWNLOAD] Received from Dropbox:', data);
-            if (data.error) {
-              console.error('[DOWNLOAD] Error in response:', data);
-              if (!silent) alert(`✗ ${data.message || data.error}`);
+            const response = await res.json();
+            console.log('[DOWNLOAD] Received from Dropbox:', response);
+            if (response.error) {
+              console.error('[DOWNLOAD] Error in response:', response);
+              if (!silent) alert(`✗ ${response.message || response.error}`);
               return;
             }
-            console.log('[DOWNLOAD] Applying data - goals:', data.goals?.length, 'lists:', data.lists?.length);
-            if (data.goals) setGoals(data.goals);
-            if (data.lists) setLists(data.lists);
-            if (data.selectedListId) setSelectedListId(data.selectedListId);
+            const data = response.contents ? JSON.parse(response.contents) : null;
+            console.log('[DOWNLOAD] Parsed data - goals:', data?.goals?.length, 'lists:', data?.lists?.length);
+            if (data?.goals) setGoals(data.goals);
+            if (data?.lists) setLists(data.lists);
+            if (data?.selectedListId) setSelectedListId(data.selectedListId);
             setLastDropboxSync(Date.now());
             if (!silent) alert('✓ Dropbox 다운로드 완료');
           } catch (err) {
