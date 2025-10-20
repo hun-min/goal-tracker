@@ -1,4 +1,4 @@
-const DROPBOX_FILE_PATH = '/Apps/GoalTracker/goals.json';
+const DROPBOX_FILE_PATH = '/Apps/goal-tracker/goals.json';
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
