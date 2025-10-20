@@ -531,32 +531,21 @@
                     });
                     const dropboxData = await res.json();
                     
-                    const localData = localStorage.getItem(STORAGE_KEY);
-                    const localParsed = localData ? JSON.parse(localData) : null;
-                    const localTime = localParsed?.savedAt ? new Date(localParsed.savedAt).getTime() : 0;
-                    const dropboxTime = dropboxData?.savedAt ? new Date(dropboxData.savedAt).getTime() : 0;
-                    
-                    if (dropboxTime > localTime) {
-                      if (dropboxData.goals) setGoals(dropboxData.goals);
-                      if (dropboxData.lists) setLists(dropboxData.lists);
-                      if (dropboxData.selectedListId) setSelectedListId(dropboxData.selectedListId);
-                      setLastDropboxSync(Date.now());
-                    } else if (localTime > dropboxTime && localParsed?.goals) {
-                      const localListsData = localStorage.getItem(LISTS_STORAGE_KEY);
-                      const localListsParsed = localListsData ? JSON.parse(localListsData) : {};
-                      const payload = { 
-                        goals: localParsed.goals, 
-                        lists: localListsParsed.lists || [], 
-                        selectedListId: localListsParsed.selectedListId,
-                        savedAt: localParsed.savedAt
-                      };
-                      await fetch('/api/dropbox/sync', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ mode: 'push', contents: JSON.stringify(payload) })
-                      });
-                      setLastDropboxSync(Date.now());
+                    // Always apply Dropbox data when connected
+                    if (dropboxData.goals) {
+                      setGoals(dropboxData.goals);
+                      localStorage.setItem(STORAGE_KEY, JSON.stringify({ goals: dropboxData.goals, savedAt: dropboxData.savedAt || new Date().toISOString() }));
                     }
+                    if (dropboxData.lists) {
+                      setLists(dropboxData.lists);
+                    }
+                    if (dropboxData.selectedListId) {
+                      setSelectedListId(dropboxData.selectedListId);
+                    }
+                    if (dropboxData.lists || dropboxData.selectedListId) {
+                      localStorage.setItem(LISTS_STORAGE_KEY, JSON.stringify({ lists: dropboxData.lists || [], selectedListId: dropboxData.selectedListId, savedAt: dropboxData.savedAt || new Date().toISOString() }));
+                    }
+                    setLastDropboxSync(Date.now());
                   } catch (err) {
                     console.error('Smart sync failed:', err);
                   }
