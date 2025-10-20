@@ -512,6 +512,7 @@
         const notificationSoundRef = useRef(null);
         const cardRefs = useRef([]);
         const syncTimeoutRef = useRef(null);
+        const dropboxInitializedRef = useRef(false);
 
 
 
@@ -587,11 +588,15 @@
                     }
                   } catch (err) {
                     console.error('Smart sync failed:', err);
+                  } finally {
+                    dropboxInitializedRef.current = true;
                   }
                 }, 100);
+              } else {
+                dropboxInitializedRef.current = true;
               }
             })
-            .catch(() => {});
+            .catch(() => { dropboxInitializedRef.current = true; });
         }, []);
 
         const connectDropbox = async () => {
@@ -756,9 +761,9 @@
           }
         }, []);
 
-               // Save lists/selection (NO auto-upload)
-               const listsInitializedRef = useRef(false);
-               useEffect(() => {
+        // Save lists to localStorage only
+        const listsInitializedRef = useRef(false);
+        useEffect(() => {
           if (lists.length > 0) {
             if (!listsInitializedRef.current) {
               listsInitializedRef.current = true;
@@ -771,25 +776,20 @@
           }
         }, [lists, selectedListId]);
 
-        // Auto-upload to Dropbox ONLY when goals change (with delay)
-        const goalsInitializedRef = useRef(false);
+        // Mark dirty and schedule sync when goals/lists change (1min timer pattern)
+        const dataInitializedRef = useRef(false);
         useEffect(() => {
-          if (!goalsInitializedRef.current) {
-            goalsInitializedRef.current = true;
+          if (!dataInitializedRef.current) {
+            dataInitializedRef.current = true;
             return;
           }
           if (syncTimeoutRef.current) clearTimeout(syncTimeoutRef.current);
-          if (dropboxConnected && goals.length > 0) {
+          
+          // Schedule Dropbox sync if connected and has data (only after initial sync)
+          if (dropboxConnected && goals.length > 0 && dropboxInitializedRef.current) {
             syncTimeoutRef.current = setTimeout(async () => {
               try {
-                const listsData = localStorage.getItem(LISTS_STORAGE_KEY);
-                const listsParsed = listsData ? JSON.parse(listsData) : {};
-                const payload = { 
-                  goals, 
-                  lists: listsParsed.lists || lists, 
-                  selectedListId: listsParsed.selectedListId || selectedListId, 
-                  savedAt: new Date().toISOString() 
-                };
+                const payload = { goals, lists, selectedListId, savedAt: new Date().toISOString() };
                 await fetch('/api/dropbox/sync', {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
@@ -797,28 +797,10 @@
                 });
                 setLastDropboxSync(Date.now());
               } catch (err) {}
-            }, 3000);
+            }, 2000);
           }
-          if (persistence.fileHandleRef?.current && goals.length > 0) {
-            syncTimeoutRef.current = setTimeout(async () => {
-              const syncPayload = JSON.stringify({
-                syncedAt: new Date().toISOString(),
-                goals,
-                lists,
-                selectedListId
-              }, null, 2);
-              const synced = await persistence.writeFileHandle(persistence.fileHandleRef.current, syncPayload);
-              if (!synced && !persistence.fileHandleRef.current) {
-                persistence.setStatusMessage?.("✗ 파일 연결 만료. 동기화 버튼을 눌러주세요.");
-              }
-            }, 3000);
-          }
-        }, [goals, dropboxConnected]);
-
-        // Separate effect for file sync when lists change
-        useEffect(() => {
-          if (!listsInitializedRef.current) return;
-          if (syncTimeoutRef.current) clearTimeout(syncTimeoutRef.current);
+          
+          // Schedule file sync if connected
           if (persistence.fileHandleRef?.current) {
             syncTimeoutRef.current = setTimeout(async () => {
               const syncPayload = JSON.stringify({
@@ -827,36 +809,10 @@
                 lists,
                 selectedListId
               }, null, 2);
-              const synced = await persistence.writeFileHandle(persistence.fileHandleRef.current, syncPayload);
-              if (!synced && !persistence.fileHandleRef.current) {
-                persistence.setStatusMessage?.("✗ 파일 연결 만료. 동기화 버튼을 눌러주세요.");
-              }
-            }, 3000);
+              await persistence.writeFileHandle(persistence.fileHandleRef.current, syncPayload);
+            }, 2000);
           }
-        }, [lists, selectedListId]);
-
-        // REMOVED: old combined effect that was causing empty uploads
-        useEffect(() => {
-          return () => {
-            if (false) { // disabled block
-              // Local file sync if not using Dropbox
-              else if (persistence.fileHandleRef?.current) {
-                syncTimeoutRef.current = setTimeout(async () => {
-                  const syncPayload = JSON.stringify({
-                    syncedAt: new Date().toISOString(),
-                    goals,
-                    lists,
-                    selectedListId
-                  }, null, 2);
-                  const synced = await persistence.writeFileHandle(persistence.fileHandleRef.current, syncPayload);
-                  if (!synced && !persistence.fileHandleRef.current) {
-                    persistence.setStatusMessage?.("✗ 파일 연결 만료. 동기화 버튼을 눌러주세요.");
-                  }
-                }, 3000);
-              }
-            } catch (err) {}
-          }
-        }, [lists, selectedListId, dropboxConnected]);
+        }, [goals, lists, selectedListId, dropboxConnected]);
 
 
 

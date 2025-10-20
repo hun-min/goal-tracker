@@ -1,6 +1,66 @@
 {
-  "syncedAt": "2025-10-17T10:09:31.132Z",
+  "syncedAt": "2025-10-20T02:09:54.110Z",
   "goals": [
+    {
+      "id": 1760915932756,
+      "name": "돌잔치 마무리",
+      "targetHours": 4,
+      "totalSeconds": 0,
+      "logs": [],
+      "todos": [
+        {
+          "id": 1760915940291,
+          "text": "옷 입어보기",
+          "done": false
+        },
+        {
+          "id": 1760915950580,
+          "text": "다엘이 옷 준비",
+          "done": false
+        },
+        {
+          "id": 1760915955330,
+          "text": "수건 준비",
+          "done": false
+        },
+        {
+          "id": 1760915961118,
+          "text": "선물 준비",
+          "done": false
+        },
+        {
+          "id": 1760915966535,
+          "text": "영상 준비",
+          "done": false
+        }
+      ],
+      "createdAt": "2025-10-19T23:18:52.756Z",
+      "completedAt": null,
+      "listId": "default"
+    },
+    {
+      "id": 1760911064805,
+      "name": "치우기",
+      "targetHours": 0,
+      "totalSeconds": 600,
+      "logs": [
+        {
+          "date": "2025. 10. 20.",
+          "seconds": 600,
+          "memo": "빨래개기 "
+        },
+        {
+          "date": "2025. 10. 20.",
+          "seconds": 0,
+          "memo": "빨래개기",
+          "fromTodo": true
+        }
+      ],
+      "todos": [],
+      "createdAt": "2025-10-19T21:57:44.805Z",
+      "completedAt": null,
+      "listId": "default"
+    },
     {
       "id": 1760692234452,
       "name": "영어",
@@ -9,7 +69,8 @@
       "logs": [],
       "createdAt": "2025-10-17T09:10:34.452Z",
       "completedAt": null,
-      "listId": "default"
+      "listId": "default",
+      "todos": []
     },
     {
       "id": 1760684375205,
@@ -73,7 +134,49 @@
       ],
       "createdAt": "2025-10-17T09:15:28.180Z",
       "completedAt": null,
-      "listId": "default"
+      "listId": "default",
+      "todos": [
+        {
+          "id": 1760915557467,
+          "text": "백업 정상화",
+          "done": false
+        },
+        {
+          "id": 1760915569383,
+          "text": "할일 추가 조금 위로",
+          "done": false
+        },
+        {
+          "id": 1760915615019,
+          "text": "아디 여러개로 돌려쓰기",
+          "done": false
+        },
+        {
+          "id": 1760915660832,
+          "text": "할일에 별도 시간 추가 설정(합쳐지지 않는 방식)",
+          "done": false
+        },
+        {
+          "id": 1760915678268,
+          "text": "할일 식제 시 확인 필요",
+          "done": false
+        },
+        {
+          "id": 1760915726320,
+          "text": "목표 시간이 너무 거대해 보이면 압박감 느끼는데 어떻게 해야할까 일단 하다보면 처음엔 개똥 같다가 나중에 완성 되는데 그걸 하고 싶은데",
+          "done": false
+        },
+        {
+          "id": 1760915901204,
+          "text": "주간이 며칠부터 며칠까진지 모르겠네",
+          "done": false
+        },
+        {
+          "id": 1760915997966,
+          "text": "조금 더 카드마다 분간가게",
+          "done": false
+        }
+      ]
     },
     {
       "id": 1760668859921,
