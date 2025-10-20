@@ -531,21 +531,54 @@
                     });
                     const dropboxData = await res.json();
                     
-                    // Always apply Dropbox data when connected
-                    if (dropboxData.goals) {
+                    const localData = localStorage.getItem(STORAGE_KEY);
+                    const localParsed = localData ? JSON.parse(localData) : null;
+                    const localTime = localParsed?.savedAt ? new Date(localParsed.savedAt).getTime() : 0;
+                    const dropboxTime = dropboxData?.savedAt ? new Date(dropboxData.savedAt).getTime() : 0;
+                    
+                    // 안전장치: 빈 데이터로 덮어쓰기 방지
+                    const dropboxHasData = dropboxData?.goals && dropboxData.goals.length > 0;
+                    const localHasData = localParsed?.goals && localParsed.goals.length > 0;
+                    
+                    if (dropboxTime > localTime && dropboxHasData) {
+                      // Dropbox가 최신이고 데이터가 있을 때만 적용
                       setGoals(dropboxData.goals);
-                      localStorage.setItem(STORAGE_KEY, JSON.stringify({ goals: dropboxData.goals, savedAt: dropboxData.savedAt || new Date().toISOString() }));
+                      if (dropboxData.lists) setLists(dropboxData.lists);
+                      if (dropboxData.selectedListId) setSelectedListId(dropboxData.selectedListId);
+                      setLastDropboxSync(Date.now());
+                    } else if (!dropboxHasData && localHasData) {
+                      // Dropbox가 비어있고 로컬에 데이터가 있으면 업로드
+                      const localListsData = localStorage.getItem(LISTS_STORAGE_KEY);
+                      const localListsParsed = localListsData ? JSON.parse(localListsData) : {};
+                      const payload = { 
+                        goals: localParsed.goals, 
+                        lists: localListsParsed.lists || [], 
+                        selectedListId: localListsParsed.selectedListId,
+                        savedAt: new Date().toISOString()
+                      };
+                      await fetch('/api/dropbox/sync', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ mode: 'push', contents: JSON.stringify(payload) })
+                      });
+                      setLastDropboxSync(Date.now());
+                    } else if (localTime > dropboxTime && localHasData) {
+                      // 로컬이 최신이고 데이터가 있으면 업로드
+                      const localListsData = localStorage.getItem(LISTS_STORAGE_KEY);
+                      const localListsParsed = localListsData ? JSON.parse(localListsData) : {};
+                      const payload = { 
+                        goals: localParsed.goals, 
+                        lists: localListsParsed.lists || [], 
+                        selectedListId: localListsParsed.selectedListId,
+                        savedAt: localParsed.savedAt
+                      };
+                      await fetch('/api/dropbox/sync', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ mode: 'push', contents: JSON.stringify(payload) })
+                      });
+                      setLastDropboxSync(Date.now());
                     }
-                    if (dropboxData.lists) {
-                      setLists(dropboxData.lists);
-                    }
-                    if (dropboxData.selectedListId) {
-                      setSelectedListId(dropboxData.selectedListId);
-                    }
-                    if (dropboxData.lists || dropboxData.selectedListId) {
-                      localStorage.setItem(LISTS_STORAGE_KEY, JSON.stringify({ lists: dropboxData.lists || [], selectedListId: dropboxData.selectedListId, savedAt: dropboxData.savedAt || new Date().toISOString() }));
-                    }
-                    setLastDropboxSync(Date.now());
                   } catch (err) {
                     console.error('Smart sync failed:', err);
                   }
