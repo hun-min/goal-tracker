@@ -743,14 +743,13 @@
                const listsInitializedRef = useRef(false);
                useEffect(() => {
           if (lists.length > 0) {
+            if (!listsInitializedRef.current) {
+              listsInitializedRef.current = true;
+              return;
+            }
             try {
               const payload = JSON.stringify({ lists, selectedListId, savedAt: new Date().toISOString() });
               localStorage.setItem(LISTS_STORAGE_KEY, payload);
-              
-              if (!listsInitializedRef.current) {
-                listsInitializedRef.current = true;
-                return;
-              }
               
               if (syncTimeoutRef.current) clearTimeout(syncTimeoutRef.current);
               
