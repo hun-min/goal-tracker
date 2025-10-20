@@ -802,7 +802,7 @@
         // Mark dirty and schedule sync when goals/lists change (1min timer pattern)
         const dataInitializedRef = useRef(false);
         useEffect(() => {
-          if (!dataInitializedRef.current) {
+          if (!dataInitializedRef.current || !dropboxInitializedRef.current) {
             dataInitializedRef.current = true;
             return;
           }
