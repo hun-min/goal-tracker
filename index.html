@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Targeted time</title>
-    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><defs><linearGradient id='g' x1='0%25' y1='0%25' x2='100%25' y2='100%25'><stop offset='0%25' style='stop-color:%233b82f6'/><stop offset='100%25' style='stop-color:%2306b6d4'/></linearGradient></defs><rect width='100' height='100' rx='20' fill='url(%23g)'/><circle cx='50' cy='50' r='32' fill='none' stroke='white' stroke-width='4'/><circle cx='50' cy='50' r='3' fill='white'/><line x1='50' y1='50' x2='50' y2='28' stroke='white' stroke-width='3' stroke-linecap='round'/><line x1='50' y1='50' x2='65' y2='50' stroke='white' stroke-width='2.5' stroke-linecap='round'/><path d='M 35 15 L 50 22 L 65 15' stroke='white' stroke-width='2.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/></svg>" type="image/svg+xml" />
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='20' fill='%233b82f6'/><circle cx='50' cy='50' r='30' fill='white'/><circle cx='50' cy='50' r='15' fill='%233b82f6'/></svg>" type="image/svg+xml" />
     <link rel="manifest" href="/manifest.json" />
     <meta name="theme-color" content="#000000" />
     <link
@@ -27,18 +27,21 @@
       .card-blur {
         background: rgba(15, 23, 42, 0.72);
         backdrop-filter: blur(12px);
-        border: 1px solid rgba(148, 163, 184, 0.2);
+        border: 2px solid rgba(148, 163, 184, 0.4);
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
       }
       
       .card-complete {
         background: #022c22 !important;
-        border: 1px solid #064e3b !important;
+        border: 2px solid #064e3b !important;
         backdrop-filter: none !important;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
       }
 
       .card-today-pending {
         background: rgba(59, 130, 246, 0.1) !important;
-        border: 1px solid rgba(59, 130, 246, 0.3) !important;
+        border: 2px solid rgba(59, 130, 246, 0.5) !important;
+        box-shadow: 0 2px 8px rgba(59, 130, 246, 0.2);
       }
 
       @keyframes pulse-glow {
@@ -507,6 +510,11 @@
         const [confetti, setConfetti] = useState([]);
         const [showWeeklyReport, setShowWeeklyReport] = useState(false);
         const [pomodoroMode, setPomodoroMode] = useState(false);
+        const [justStartMode, setJustStartMode] = useState(() => {
+          try {
+            return localStorage.getItem('just-start-mode') === 'true';
+          } catch { return false; }
+        });
         const [pomodoroPhase, setPomodoroPhase] = useState('work'); // 'work' or 'break'
         const [nextGoalSuggestion, setNextGoalSuggestion] = useState(null);
         const notificationSoundRef = useRef(null);
@@ -2057,6 +2065,17 @@ localStorage.removeItem('timer-state');
                       >
                         🍅{pomodoroMode && <span className="text-[10px]">ON</span>}
                       </button>
+                      <button
+                        onClick={() => {
+                          const newMode = !justStartMode;
+                          setJustStartMode(newMode);
+                          try { localStorage.setItem('just-start-mode', newMode); } catch {}
+                        }}
+                        className={`${justStartMode ? 'px-1.5 py-0.5 bg-gradient-to-br from-green-500 to-emerald-500 text-white shadow-lg' : 'h-7 w-7 bg-gray-700 hover:bg-gray-600'} flex items-center gap-0.5 justify-center rounded-full text-xs transition-all hover:scale-105`}
+                        title="일단 시작 모드"
+                      >
+                        🚀{justStartMode && <span className="text-[10px]">ON</span>}
+                      </button>
                       {!dropboxConnected && (
                         <>
                           <button
@@ -2347,7 +2366,7 @@ localStorage.removeItem('timer-state');
                                     🔥{streak}
                                   </span>
                                 )}
-                                <span className="text-gray-400 text-sm whitespace-nowrap flex-shrink-0">{progress.toFixed(0)}%</span>
+                                {!justStartMode && <span className="text-gray-400 text-sm whitespace-nowrap flex-shrink-0">{progress.toFixed(0)}%</span>}
                                 {getAchievementBadge(goal) && (
                                   <span className="text-sm flex-shrink-0">{getAchievementBadge(goal)}</span>
                                 )}
@@ -2356,7 +2375,7 @@ localStorage.removeItem('timer-state');
                                 {!workedToday && !isComplete && (
                                   <span className="text-blue-400 whitespace-nowrap mr-1">⏰ 오늘</span>
                                 )}
-                                {dailySuggestion && !isComplete && (
+                                {!justStartMode && dailySuggestion && !isComplete && (
                                   <span className="text-green-400 whitespace-nowrap mr-1">{dailySuggestion}/d</span>
                                 )}
                                 <span className="whitespace-nowrap">기록 {formatHoursVerbose(hours)} / 목표 <span
@@ -2481,8 +2500,9 @@ localStorage.removeItem('timer-state');
                             />
                           )}
                         </div>
-                        {goal.todos && goal.todos.length > 0 && (
-                          <div className="mb-2">
+                        <div>
+                          {goal.todos && goal.todos.length > 0 ? (
+                            <>
                             <div className="text-xs text-gray-400 mb-1">할일 ({goal.todos.filter(t => !t.done).length}/{goal.todos.length})</div>
                             <div className="space-y-1">
                               {(expandedTodos.has(goal.id) ? goal.todos : goal.todos.slice(0, 5)).map((todo) => {
@@ -2534,6 +2554,7 @@ localStorage.removeItem('timer-state');
                                         onBlur={(e) => {
                                           setGoals((prev) => prev.map((g) => g.id === goal.id ? { ...g, todos: g.todos.map((t) => t.id === todo.id ? { ...t, text: e.target.value.trim() || todo.text } : t) } : g));
                                           setEditingTodoId(null);
+                                          setSelectedTodoId(null);
                                         }}
                                         onKeyDown={(e) => {
                                           if (e.key === 'Enter') e.target.blur();
@@ -2579,11 +2600,14 @@ localStorage.removeItem('timer-state');
                                 );
                               })}
                             </div>
-                          </div>
-                        )}
-                        <div className="mb-2 flex items-center gap-2">
+                            </>
+                          ) : (
+                            <div className="text-xs text-gray-400 mb-1">할일 (0)</div>
+                          )}
+                        </div>
+                        <div>
                           {showAddTodo === goal.id ? (
-                            <div className="flex gap-1">
+                            <div className="flex gap-1 mb-1 mt-1">
                               <input
                                 type="text"
                                 placeholder="할일 입력"
@@ -2626,26 +2650,24 @@ localStorage.removeItem('timer-state');
                               </button>
                             </div>
                           ) : (
-                            <>
-                              <button
-                                onClick={() => setShowAddTodo(goal.id)}
-                                className="text-xs text-gray-400 hover:text-gray-200"
-                              >
-                                + 할일 추가
-                              </button>
-                              {goal.todos && goal.todos.length > 5 && (
-                                <button
-                                  onClick={(e) => { e.stopPropagation(); toggleExpandedTodos(goal.id); }}
-                                  className="text-xs text-gray-400 hover:text-gray-200"
-                                >
-                                  {expandedTodos.has(goal.id) ? "접기" : "더보기"}
-                                </button>
-                              )}
-                            </>
+                            <button
+                              onClick={() => setShowAddTodo(goal.id)}
+                              className="text-xs text-gray-400 hover:text-gray-200"
+                            >
+                              + 할일 추가
+                            </button>
                           )}
                         </div>
+                        {goal.todos && goal.todos.length > 5 && (
+                          <button
+                            onClick={(e) => { e.stopPropagation(); toggleExpandedTodos(goal.id); }}
+                            className="text-xs text-gray-400 hover:text-gray-200 w-full text-center"
+                          >
+                            {expandedTodos.has(goal.id) ? "접기" : "더보기"}
+                          </button>
+                        )}
                         {goal.logs.length > 0 && (
-                          <div>
+                          <div className="mt-1">
                             <div className="flex items-center justify-between mb-1">
                               <span className="text-xs text-gray-400">기록 ({goal.logs.length})</span>
                               <button
