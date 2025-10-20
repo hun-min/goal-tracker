@@ -756,7 +756,7 @@
           }
         }, []);
 
-               // Save lists/selection and auto-upload to Dropbox
+               // Save lists/selection (NO auto-upload)
                const listsInitializedRef = useRef(false);
                useEffect(() => {
           if (lists.length > 0) {
@@ -767,23 +767,78 @@
             try {
               const payload = JSON.stringify({ lists, selectedListId, savedAt: new Date().toISOString() });
               localStorage.setItem(LISTS_STORAGE_KEY, payload);
-              
-              if (syncTimeoutRef.current) clearTimeout(syncTimeoutRef.current);
-              
-              // Auto-upload to Dropbox if connected
-              if (dropboxConnected) {
-                syncTimeoutRef.current = setTimeout(async () => {
-                  try {
-                    const payload = { goals, lists, selectedListId, savedAt: new Date().toISOString() };
-                    await fetch('/api/dropbox/sync', {
-                      method: 'POST',
-                      headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({ mode: 'push', contents: JSON.stringify(payload) })
-                    });
-                    setLastDropboxSync(Date.now());
-                  } catch (err) {}
-                }, 3000);
+            } catch (err) {}
+          }
+        }, [lists, selectedListId]);
+
+        // Auto-upload to Dropbox ONLY when goals change (with delay)
+        const goalsInitializedRef = useRef(false);
+        useEffect(() => {
+          if (!goalsInitializedRef.current) {
+            goalsInitializedRef.current = true;
+            return;
+          }
+          if (syncTimeoutRef.current) clearTimeout(syncTimeoutRef.current);
+          if (dropboxConnected && goals.length > 0) {
+            syncTimeoutRef.current = setTimeout(async () => {
+              try {
+                const listsData = localStorage.getItem(LISTS_STORAGE_KEY);
+                const listsParsed = listsData ? JSON.parse(listsData) : {};
+                const payload = { 
+                  goals, 
+                  lists: listsParsed.lists || lists, 
+                  selectedListId: listsParsed.selectedListId || selectedListId, 
+                  savedAt: new Date().toISOString() 
+                };
+                await fetch('/api/dropbox/sync', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ mode: 'push', contents: JSON.stringify(payload) })
+                });
+                setLastDropboxSync(Date.now());
+              } catch (err) {}
+            }, 3000);
+          }
+          if (persistence.fileHandleRef?.current && goals.length > 0) {
+            syncTimeoutRef.current = setTimeout(async () => {
+              const syncPayload = JSON.stringify({
+                syncedAt: new Date().toISOString(),
+                goals,
+                lists,
+                selectedListId
+              }, null, 2);
+              const synced = await persistence.writeFileHandle(persistence.fileHandleRef.current, syncPayload);
+              if (!synced && !persistence.fileHandleRef.current) {
+                persistence.setStatusMessage?.("✗ 파일 연결 만료. 동기화 버튼을 눌러주세요.");
               }
+            }, 3000);
+          }
+        }, [goals, dropboxConnected]);
+
+        // Separate effect for file sync when lists change
+        useEffect(() => {
+          if (!listsInitializedRef.current) return;
+          if (syncTimeoutRef.current) clearTimeout(syncTimeoutRef.current);
+          if (persistence.fileHandleRef?.current) {
+            syncTimeoutRef.current = setTimeout(async () => {
+              const syncPayload = JSON.stringify({
+                syncedAt: new Date().toISOString(),
+                goals,
+                lists,
+                selectedListId
+              }, null, 2);
+              const synced = await persistence.writeFileHandle(persistence.fileHandleRef.current, syncPayload);
+              if (!synced && !persistence.fileHandleRef.current) {
+                persistence.setStatusMessage?.("✗ 파일 연결 만료. 동기화 버튼을 눌러주세요.");
+              }
+            }, 3000);
+          }
+        }, [lists, selectedListId]);
+
+        // REMOVED: old combined effect that was causing empty uploads
+        useEffect(() => {
+          return () => {
+            if (false) { // disabled block
               // Local file sync if not using Dropbox
               else if (persistence.fileHandleRef?.current) {
                 syncTimeoutRef.current = setTimeout(async () => {
