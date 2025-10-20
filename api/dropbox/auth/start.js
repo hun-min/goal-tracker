@@ -1,0 +1,8 @@
+export default function handler(req, res) {
+  const clientId = process.env.DROPBOX_APP_KEY;
+  const redirectUri = 'https://targeted-time.vercel.app/api/dropbox/callback';
+  
+  const authUrl = `https://www.dropbox.com/oauth2/authorize?client_id=${clientId}&response_type=code&redirect_uri=${encodeURIComponent(redirectUri)}`;
+  
+  res.status(200).json({ authUrl });
+}

@@ -1,0 +1,117 @@
+{
+  "syncedAt": "2025-10-17T05:17:22.870Z",
+  "goals": [
+    {
+      "id": 1760675967803,
+      "name": "특허 마무리",
+      "targetHours": 17,
+      "totalSeconds": 1800,
+      "logs": [
+        {
+          "date": "2025. 10. 16.",
+          "seconds": 1800,
+          "memo": ""
+        }
+      ],
+      "createdAt": "2025-10-17T04:39:27.803Z",
+      "completedAt": null,
+      "listId": "default"
+    },
+    {
+      "id": 1760668859921,
+      "name": "일어",
+      "targetHours": 49.5,
+      "totalSeconds": 1380,
+      "logs": [
+        {
+          "date": "2025. 10. 14.",
+          "seconds": 1380,
+          "memo": ""
+        }
+      ],
+      "createdAt": "2025-10-17T02:40:59.921Z",
+      "completedAt": null,
+      "listId": "default",
+      "executed": false,
+      "executedAt": null
+    },
+    {
+      "id": 1760496459191,
+      "name": "국보디자인 답변",
+      "targetHours": 0.1,
+      "totalSeconds": 360,
+      "logs": [
+        {
+          "date": "2025. 10. 15.",
+          "seconds": 360
+        }
+      ],
+      "createdAt": "2025-10-15T02:47:39.191Z",
+      "listId": "list-1760431459862",
+      "completedAt": "2025-10-17T02:07:15.940Z",
+      "executed": false,
+      "executedAt": null
+    },
+    {
+      "id": 1760429530493,
+      "name": "11",
+      "targetHours": 1,
+      "totalSeconds": 0,
+      "logs": [],
+      "createdAt": "2025-10-14T08:12:10.493Z",
+      "listId": "list-1760429527423"
+    },
+    {
+      "id": 1760427447426,
+      "name": "`11",
+      "targetHours": 11,
+      "totalSeconds": 0,
+      "logs": [],
+      "createdAt": "2025-10-14T07:37:27.426Z",
+      "listId": "list-1760427437701"
+    },
+    {
+      "id": 1760426608375,
+      "name": "ㅁㅁ",
+      "targetHours": 1,
+      "totalSeconds": 0,
+      "logs": [],
+      "createdAt": "2025-10-14T07:23:28.375Z",
+      "listId": "list-1760426604039"
+    },
+    {
+      "id": 1760426436089,
+      "name": "11",
+      "targetHours": 1,
+      "totalSeconds": 0,
+      "logs": [],
+      "createdAt": "2025-10-14T07:20:36.089Z",
+      "listId": "list-1760426429678"
+    },
+    {
+      "id": 1760426030494,
+      "name": "dd",
+      "targetHours": 0.001,
+      "totalSeconds": 4,
+      "logs": [
+        {
+          "date": "2025. 10. 14.",
+          "seconds": 4
+        }
+      ],
+      "createdAt": "2025-10-14T07:13:50.494Z",
+      "listId": "list-1760425955541"
+    }
+  ],
+  "lists": [
+    {
+      "id": "default",
+      "name": "기본함"
+    },
+    {
+      "id": "list-1760431459862",
+      "name": "KMW"
+    }
+  ],
+  "selectedListId": "default"
+}

@@ -1,0 +1,889 @@
+<!DOCTYPE html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>목표 달성 추적기</title>
+    <link
+      rel="stylesheet"
+      href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css"
+    />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+KR:wght@400;500;700&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      body {
+        font-family: "Inter", "Noto Sans KR", system-ui, -apple-system, BlinkMacSystemFont,
+          "Segoe UI", sans-serif;
+        background: #000;
+      }
+
+      .card-blur {
+        background: rgba(15, 23, 42, 0.72);
+        backdrop-filter: blur(12px);
+        border: 1px solid rgba(148, 163, 184, 0.2);
+      }
+      
+      .card-complete {
+        background: #022c22 !important;
+        border: 1px solid #064e3b !important;
+        backdrop-filter: none !important;
+      }
+
+      input::-webkit-inner-spin-button,
+      input::-webkit-outer-spin-button {
+        -webkit-appearance: none;
+        margin: 0;
+      }
+    </style>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  </head>
+  <body class="min-h-screen text-gray-100">
+    <div id="root"></div>
+
+    <script type="text/babel" data-type="module">
+      import React, { useState, useEffect, useRef, useCallback } from "https://esm.sh/react@18";
+      import { createRoot } from "https://esm.sh/react-dom@18/client";
+      import {
+        Plus,
+        Trash2,
+        Play,
+        Pause,
+        Upload,
+        Download,
+        RefreshCcw,
+        Info,
+        ChevronUp,
+        ChevronDown,
+        X,
+        Clock,
+        GripVertical
+      } from "https://esm.sh/lucide-react@0.368.0";
+
+      const STORAGE_KEY = "goal-tracker-data-v1";
+      const EXPORT_FILE_NAME = "goal-tracker-data.json";
+
+      const formatRelativeTime = (timestamp) => {
+        if (!timestamp) return "";
+        const diff = Math.max(0, Date.now() - timestamp);
+        if (diff < 30000) return "방금 전";
+        const minutes = Math.floor(diff / 60000);
+        if (minutes < 60) return `${minutes}분 전`;
+        const hours = Math.floor(minutes / 60);
+        if (hours < 24) return `${hours}시간 전`;
+        const days = Math.floor(hours / 24);
+        if (days === 1) return "어제";
+        return `${days}일 전`;
+      };
+
+      function useGoalDataPersistence(goals, setGoals) {
+        const fileInputRef = useRef(null);
+        const fileHandleRef = useRef(null);
+        const supportsFilePicker = useRef(
+          typeof window !== "undefined" && typeof window.showSaveFilePicker === "function"
+        ).current;
+        const [statusMessage, setStatusMessage] = useState("로컬에 자동 저장됩니다.");
+        const [lastSavedAt, setLastSavedAt] = useState(null);
+        const [lastLoadedAt, setLastLoadedAt] = useState(null);
+        const hasInitializedRef = useRef(false);
+
+        useEffect(() => {
+          try {
+            const stored = localStorage.getItem(STORAGE_KEY);
+            if (stored) {
+              const parsed = JSON.parse(stored);
+              if (parsed && Array.isArray(parsed.goals)) {
+                setGoals(parsed.goals);
+                setStatusMessage("로컬 저장된 데이터를 불러왔습니다.");
+                setLastLoadedAt(Date.now());
+              }
+            }
+          } catch (err) {
+            console.error("[sync] load failed", err);
+            setStatusMessage("저장된 데이터를 불러오지 못했습니다.");
+          } finally {
+            hasInitializedRef.current = true;
+          }
+        }, [setGoals]);
+
+        useEffect(() => {
+          if (!hasInitializedRef.current) return;
+          try {
+            const payload = JSON.stringify({ goals, savedAt: new Date().toISOString() });
+            localStorage.setItem(STORAGE_KEY, payload);
+            setLastSavedAt(Date.now());
+            setStatusMessage("변경 사항을 자동 저장했습니다.");
+          } catch (err) {
+            console.error("[sync] save failed", err);
+            setStatusMessage("자동 저장에 실패했습니다. 저장 공간을 확인해주세요.");
+          }
+        }, [goals]);
+
+        const triggerImport = useCallback(() => {
+          fileInputRef.current?.click();
+        }, []);
+
+        const writeFileHandle = useCallback(async (handle, contents) => {
+          if (!handle?.createWritable) return false;
+          try {
+            const permissionOpts = { mode: "readwrite" };
+            let permission = handle.queryPermission ? await handle.queryPermission(permissionOpts) : "prompt";
+            if (permission !== "granted") {
+              permission = handle.requestPermission ? await handle.requestPermission(permissionOpts) : "granted";
+            }
+            if (permission !== "granted") return false;
+            const writable = await handle.createWritable();
+            await writable.write(contents);
+            await writable.close();
+            return true;
+          } catch (err) {
+            console.error("[sync] write failed", err);
+            return false;
+          }
+        }, []);
+
+        const handleFileSelected = useCallback(
+          (event) => {
+            const file = event.target.files?.[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = () => {
+              try {
+                const text = reader.result;
+                const parsed = JSON.parse(text);
+                if (parsed && Array.isArray(parsed.goals)) {
+                  setGoals(parsed.goals);
+                  localStorage.setItem(
+                    STORAGE_KEY,
+                    JSON.stringify({ goals: parsed.goals, importedFrom: file.name, importedAt: new Date().toISOString() })
+                  );
+                  setStatusMessage(`${file.name}에서 데이터를 불러왔습니다.`);
+                  setLastLoadedAt(Date.now());
+                } else {
+                  setStatusMessage("선택한 파일에 목표 데이터가 없습니다.");
+                }
+              } catch (err) {
+                console.error("[sync] import failed", err);
+                setStatusMessage("파일을 읽는 중 문제가 발생했습니다.");
+              } finally {
+                event.target.value = "";
+              }
+            };
+            reader.readAsText(file, "utf-8");
+          },
+          [setGoals]
+        );
+
+        const triggerExport = useCallback(async () => {
+          const payload = JSON.stringify(
+            {
+              exportedAt: new Date().toISOString(),
+              goals
+            },
+            null,
+            2
+          );
+
+          if (supportsFilePicker) {
+            try {
+              const handle = await window.showSaveFilePicker({
+                suggestedName: EXPORT_FILE_NAME,
+                types: [
+                  {
+                    description: "Goal Tracker JSON",
+                    accept: { "application/json": [".json"] }
+                  }
+                ]
+              });
+              const wrote = await writeFileHandle(handle, payload);
+              if (wrote) {
+                fileHandleRef.current = handle;
+                setStatusMessage("선택한 위치에 저장했습니다. 다음에는 동기화 버튼으로 덮어쓸 수 있습니다.");
+                setLastSavedAt(Date.now());
+                return;
+              }
+            } catch (err) {
+              if (err?.name === "AbortError") {
+                setStatusMessage("파일 저장을 취소했습니다.");
+                return;
+              }
+              console.error("[sync] export failed via picker", err);
+            }
+          }
+
+          try {
+            const blob = new Blob([payload], { type: "application/json" });
+            const url = URL.createObjectURL(blob);
+            const anchor = document.createElement("a");
+            anchor.href = url;
+            anchor.download = EXPORT_FILE_NAME;
+            document.body.appendChild(anchor);
+            anchor.click();
+            document.body.removeChild(anchor);
+            URL.revokeObjectURL(url);
+            setStatusMessage("파일을 다운로드했습니다. 필요한 위치로 이동해 Resilio Sync 폴더에 두세요.");
+            setLastSavedAt(Date.now());
+          } catch (err) {
+            console.error("[sync] export failed", err);
+            setStatusMessage("파일로 저장하지 못했습니다. 브라우저 권한을 확인해주세요.");
+          }
+        }, [goals, supportsFilePicker, writeFileHandle]);
+
+        const triggerSync = useCallback(async () => {
+          const payload = JSON.stringify(
+            {
+              syncedAt: new Date().toISOString(),
+              goals
+            },
+            null,
+            2
+          );
+
+          if (!fileHandleRef.current) {
+            setStatusMessage("먼저 '파일로 저장'으로 위치를 선택해주세요.");
+            return;
+          }
+
+          const synced = await writeFileHandle(fileHandleRef.current, payload);
+          if (synced) {
+            setStatusMessage("Resilio Sync 동기화 완료되었습니다.");
+            setLastSavedAt(Date.now());
+          } else {
+            setStatusMessage("동기화에 실패했습니다. 다시 시도해주세요.");
+          }
+        }, [goals, writeFileHandle]);
+
+        return {
+          fileInputRef,
+          triggerImport,
+          handleFileSelected,
+          triggerExport,
+          triggerSync,
+          statusMessage,
+          lastSavedAt,
+          lastLoadedAt,
+          storageKey: STORAGE_KEY,
+          exportFileName: EXPORT_FILE_NAME,
+          supportsFilePicker
+        };
+      }
+
+      function GoalTracker() {
+        const [goals, setGoals] = useState([]);
+        const [newGoalName, setNewGoalName] = useState("");
+        const [newGoalTarget, setNewGoalTarget] = useState("");
+        const [activeTimer, setActiveTimer] = useState(null);
+        const [timerSeconds, setTimerSeconds] = useState(0);
+        const persistence = useGoalDataPersistence(goals, setGoals);
+        const [showSyncDetails, setShowSyncDetails] = useState(false);
+        const [collapsedGoals, setCollapsedGoals] = useState(() => new Set());
+        const [editingLogsGoalId, setEditingLogsGoalId] = useState(null);
+        const [showAddLog, setShowAddLog] = useState(null);
+        const [newLogHours, setNewLogHours] = useState("");
+        const [newLogMinutes, setNewLogMinutes] = useState("");
+
+        useEffect(() => {
+          if (activeTimer === null) return undefined;
+          const interval = setInterval(() => {
+            setTimerSeconds((prev) => prev + 1);
+          }, 1000);
+          return () => clearInterval(interval);
+        }, [activeTimer]);
+
+        const addGoal = () => {
+          const trimmedName = newGoalName.trim();
+          const trimmedTarget = newGoalTarget.trim();
+          if (trimmedName && trimmedTarget) {
+            const parsedTarget = parseFloat(trimmedTarget);
+            setGoals((prevGoals) => [
+              {
+                id: Date.now(),
+                name: trimmedName,
+                targetHours: isNaN(parsedTarget) ? 0 : parsedTarget,
+                totalSeconds: 0,
+                logs: [],
+                createdAt: new Date()
+              },
+              ...prevGoals
+            ]);
+            setNewGoalName("");
+            setNewGoalTarget("");
+          }
+        };
+
+        const handleKeyPress = (e) => {
+          if (e.key === 'Enter') {
+            addGoal();
+          }
+        };
+
+        const startTimer = (goalId) => {
+          setActiveTimer(goalId);
+          setTimerSeconds(0);
+        };
+
+        const stopTimer = (goalId) => {
+          if (activeTimer === goalId && timerSeconds > 0) {
+            setGoals((prevGoals) =>
+              prevGoals.map((goal) => {
+                if (goal.id === goalId) {
+                  return {
+                    ...goal,
+                    totalSeconds: goal.totalSeconds + timerSeconds,
+                    logs: [
+                      ...goal.logs,
+                      {
+                        date: new Date().toLocaleDateString("ko-KR"),
+                        seconds: timerSeconds
+                      }
+                    ]
+                  };
+                }
+                return goal;
+              })
+            );
+          }
+          setActiveTimer(null);
+          setTimerSeconds(0);
+        };
+
+        const deleteGoal = (goalId) => {
+          if (!window.confirm("정말로 이 목표를 삭제할까요?")) return;
+          setGoals((prevGoals) => prevGoals.filter((goal) => goal.id !== goalId));
+        };
+
+        const updateGoalName = (goalId, value) => {
+          setGoals((prevGoals) =>
+            prevGoals.map((goal) => (goal.id === goalId ? { ...goal, name: value } : goal))
+          );
+        };
+
+        const updateGoalTarget = (goalId, value) => {
+          setGoals((prevGoals) =>
+            prevGoals.map((goal) =>
+              goal.id === goalId
+                ? {
+                    ...goal,
+                    targetHours: (() => {
+                      const parsed = parseFloat(value);
+                      return Number.isFinite(parsed) ? parsed : 0;
+                    })()
+                  }
+                : goal
+            )
+          );
+        };
+
+        const toggleGoalCollapsed = useCallback((goalId) => {
+          setCollapsedGoals((prev) => {
+            const next = new Set(prev);
+            if (next.has(goalId)) {
+              next.delete(goalId);
+            } else {
+              next.add(goalId);
+            }
+            return next;
+          });
+        }, []);
+
+        const toggleEditingLogs = (goalId) => {
+          setEditingLogsGoalId((prev) => (prev === goalId ? null : goalId));
+        };
+
+        const cancelTimer = (goalId) => {
+          if (activeTimer === goalId) {
+            setActiveTimer(null);
+            setTimerSeconds(0);
+          }
+        };
+
+        const deleteGoalLog = (goalId, logIndex) => {
+          if (!window.confirm("이 기록을 삭제할까요?")) return;
+          setGoals((prevGoals) =>
+            prevGoals.map((goal) => {
+              if (goal.id !== goalId) return goal;
+              const removed = goal.logs[logIndex];
+              if (!removed) return goal;
+              const updatedLogs = goal.logs.filter((_, index) => index !== logIndex);
+              const adjustedSeconds = Math.max(goal.totalSeconds - removed.seconds, 0);
+              return { ...goal, logs: updatedLogs, totalSeconds: adjustedSeconds };
+            })
+          );
+        };
+
+        const addManualLog = (goalId) => {
+          const hours = parseFloat(newLogHours) || 0;
+          const minutes = parseFloat(newLogMinutes) || 0;
+          const totalSeconds = hours * 3600 + minutes * 60;
+          
+          if (totalSeconds > 0) {
+            setGoals((prevGoals) =>
+              prevGoals.map((goal) => {
+                if (goal.id !== goalId) return goal;
+                return {
+                  ...goal,
+                  totalSeconds: goal.totalSeconds + totalSeconds,
+                  logs: [
+                    ...goal.logs,
+                    {
+                      date: new Date().toLocaleDateString("ko-KR"),
+                      seconds: totalSeconds
+                    }
+                  ]
+                };
+              })
+            );
+            setNewLogHours("");
+            setNewLogMinutes("");
+            setShowAddLog(null);
+          }
+        };
+
+        const formatTime = (seconds) => {
+          const hours = Math.floor(seconds / 3600);
+          const mins = Math.floor((seconds % 3600) / 60);
+          const secs = seconds % 60;
+          return `${hours}h ${mins}m ${secs}s`;
+        };
+
+        const formatHoursVerbose = (hoursValue) => {
+          if (!hoursValue || hoursValue <= 0) return "0초";
+          const totalSeconds = Math.round(hoursValue * 3600);
+          if (totalSeconds < 60) {
+            return `${totalSeconds}초`;
+          }
+          const totalMinutes = Math.round(totalSeconds / 60);
+          if (totalMinutes < 60) {
+            return `${totalMinutes}분`;
+          }
+          const hours = Math.floor(totalSeconds / 3600);
+          const remainingMinutes = Math.round((totalSeconds % 3600) / 60);
+          if (remainingMinutes === 0) {
+            return `${hours}시간`;
+          }
+          return `${hours}시간 ${remainingMinutes}분`;
+        };
+
+        const formatDuration = (secondsValue) => {
+          if (!secondsValue || secondsValue <= 0) return "0초";
+          const hours = Math.floor(secondsValue / 3600);
+          const minutes = Math.floor((secondsValue % 3600) / 60);
+          const seconds = secondsValue % 60;
+          const parts = [];
+          if (hours) parts.push(`${hours}시간`);
+          if (minutes) parts.push(`${minutes}분`);
+          if (seconds && !hours && !minutes) parts.push(`${seconds}초`);
+          return parts.join(" ") || "0초";
+        };
+
+        const getProgress = (goal, totalSeconds = goal.totalSeconds) => {
+          if (!goal.targetHours) return 0;
+          const hours = totalSeconds / 3600;
+          return Math.min((hours / goal.targetHours) * 100, 100);
+        };
+
+        const getStatus = (goal, totalSeconds = goal.totalSeconds) => {
+          if (!goal.targetHours) return "목표를 설정해주세요";
+          const hours = totalSeconds / 3600;
+          if (hours >= goal.targetHours) return "완료!";
+          const remainingHours = goal.targetHours - hours;
+          if (remainingHours < 1 / 60) {
+            const remainingSeconds = remainingHours * 3600;
+            return `${Math.max(remainingSeconds.toFixed(0), 1)}초 남음`;
+          }
+          if (remainingHours < 1) {
+            return `${(remainingHours * 60).toFixed(0)}분 남음`;
+          }
+          return `${remainingHours.toFixed(1)}시간 남음`;
+        };
+
+        return (
+          <div className="min-h-screen bg-black p-5">
+            <div className="max-w-3xl mx-auto">
+              <div className="mb-6">
+                <div className="rounded-xl border border-gray-700/60 bg-gray-900/75 p-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-1.5">
+                      <input
+                        ref={persistence.fileInputRef}
+                        type="file"
+                        accept="application/json"
+                        className="hidden"
+                        onChange={persistence.handleFileSelected}
+                      />
+                      <button
+                        onClick={persistence.triggerImport}
+                        className="h-7 w-7 flex items-center justify-center rounded-full bg-cyan-500/80 hover:bg-cyan-400 text-white transition"
+                        title="파일 불러오기"
+                      >
+                        <Upload size={12} />
+                      </button>
+                      <button
+                        onClick={persistence.triggerExport}
+                        className="h-7 w-7 flex items-center justify-center rounded-full bg-emerald-500/80 hover:bg-emerald-400 text-white transition"
+                        title="파일로 저장"
+                      >
+                        <Download size={12} />
+                      </button>
+                      <button
+                        onClick={persistence.triggerSync}
+                        className="h-7 w-7 flex items-center justify-center rounded-full bg-blue-500/80 hover:bg-blue-400 text-white transition"
+                        title="동기화"
+                      >
+                        <RefreshCcw size={12} />
+                      </button>
+                    </div>
+                    <button
+                      onClick={() => setShowSyncDetails((prev) => !prev)}
+                      className="h-6 w-6 flex items-center justify-center rounded-full border border-gray-700 text-gray-300 hover:text-white hover:border-gray-500 transition"
+                      title="동기화 정보 보기"
+                    >
+                      <Info size={11} />
+                    </button>
+                  </div>
+
+                  {showSyncDetails && (
+                    <div className="mt-3 space-y-1 text-xs text-gray-400 leading-tight">
+                      <p className="font-semibold text-gray-200">Resilio Sync 안내</p>
+                      <p>
+                        JSON 파일을 내보내 Resilio Sync 폴더에 넣고, 다른 기기에서는 불러오세요.
+                      </p>
+                      <p>
+                        자동 저장 키: <code className="px-1 py-0.5 rounded bg-gray-800/80 text-gray-300">{persistence.storageKey}</code>
+                      </p>
+                      <p>{persistence.statusMessage}</p>
+                      <p>
+                        {persistence.lastSavedAt && `마지막 저장 ${formatRelativeTime(persistence.lastSavedAt)} `}
+                        {persistence.lastLoadedAt && `· 마지막 불러오기 ${formatRelativeTime(persistence.lastLoadedAt)}`}
+                      </p>
+                      <p>
+                        {persistence.supportsFilePicker
+                          ? "파일로 저장 버튼을 누르면 저장 위치를 직접 선택할 수 있습니다."
+                          : "브라우저가 저장 위치를 묻지 않으면 다운로드 폴더에서 파일을 이동하세요."}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="card-blur rounded-lg p-4 mb-5">
+                <div className="flex flex-wrap gap-1.5">
+                  <input
+                    type="text"
+                    placeholder="목표 이름 (예: 운동, 공부)"
+                    value={newGoalName}
+                    onChange={(e) => setNewGoalName(e.target.value)}
+                    onKeyPress={handleKeyPress}
+                    className="flex-1 w-full sm:w-auto px-3 py-2 bg-gray-800 text-gray-100 rounded border border-gray-700 focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-400/40 transition text-sm"
+                  />
+                  <input
+                    type="number"
+                    placeholder="목표 시간"
+                    value={newGoalTarget}
+                    onChange={(e) => setNewGoalTarget(e.target.value)}
+                    onKeyPress={handleKeyPress}
+                    className="w-28 px-3 py-2 bg-gray-800 text-gray-100 rounded border border-gray-700 focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-400/40 transition text-sm"
+                  />
+                  <button
+                    onClick={addGoal}
+                    className="px-4 py-1.5 bg-blue-500 hover:bg-blue-400 text-white rounded font-semibold flex items-center gap-1.5 transition shadow-md shadow-blue-500/15 text-sm"
+                  >
+                    <Plus size={16} /> 추가
+                  </button>
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                {goals.length === 0 ? (
+                  <div className="text-center py-8 text-gray-400 text-base">목표를 추가해보세요</div>
+                ) : (
+                  goals.map((goal) => {
+                    const isActive = activeTimer === goal.id;
+                    const extraSeconds = isActive ? timerSeconds : 0;
+                    const effectiveSeconds = goal.totalSeconds + extraSeconds;
+                    const progress = getProgress(goal, effectiveSeconds);
+                    const hours = effectiveSeconds / 3600;
+                    const isComplete = progress >= 100;
+                    const isCollapsed = collapsedGoals.has(goal.id);
+
+                    return (
+                      <div
+                        key={goal.id}
+                        className={`p-4 transition-transform duration-200 hover:-translate-y-0.5 ${
+                          isComplete
+                            ? "card-complete rounded-xl"
+                            : "card-blur rounded-xl"
+                        } ${isCollapsed ? "py-3" : ""}`}
+                      >
+                        <div className="flex justify-between items-start mb-3 gap-3">
+                          <div className="flex-1 min-w-0">
+                            {isCollapsed ? (
+                              <div className="space-y-3">
+                                <div className="flex items-center gap-3 text-xs sm:text-sm text-gray-200 whitespace-nowrap overflow-x-auto scrollbar-thin flex-nowrap">
+                                  <span className="font-semibold text-white truncate max-w-[160px] sm:max-w-[220px]">
+                                    {goal.name || "(이름 없음)"}
+                                  </span>
+                                  <span className="text-gray-400">목표 {formatHoursVerbose(goal.targetHours)}</span>
+                                  <span className="text-gray-300">진행 {progress.toFixed(0)}%</span>
+                                  <span
+                                    className={`${
+                                      isComplete
+                                        ? "bg-emerald-400/20 border border-emerald-300 text-emerald-100 font-semibold"
+                                        : "text-blue-300"
+                                    } px-2 py-0.5 rounded-full`}
+                                  >
+                                    {isComplete ? "완료" : getStatus(goal, effectiveSeconds)}
+                                  </span>
+                                </div>
+                                <div className="h-2 w-full bg-gray-800 rounded-full overflow-hidden">
+                                  <div
+                                    className={`h-full transition-all duration-300 ${
+                                      isComplete ? "bg-blue-500" : "bg-blue-500"
+                                    }`}
+                                    style={{ width: `${Math.max(progress, 5)}%` }}
+                                  />
+                                </div>
+                              </div>
+                            ) : (
+                              <div className="space-y-2">
+                                <input
+                                  type="text"
+                                  value={goal.name ?? ""}
+                                  onChange={(e) => updateGoalName(goal.id, e.target.value)}
+                                  autoComplete="off"
+                                  className="w-full bg-gray-800 text-gray-100 text-base sm:text-lg font-semibold rounded border border-gray-700 px-3 py-1.5 focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-400/40 transition"
+                                />
+                                <div className="flex items-center gap-2 text-gray-400 text-sm">
+                                  <span>목표</span>
+                                  <input
+                                    type="number"
+                                    step="0.1"
+                                    min="0"
+                                    value={goal.targetHours ?? ""}
+                                    onChange={(e) => updateGoalTarget(goal.id, e.target.value)}
+                                    className="w-24 px-2 py-1 rounded border border-gray-700 bg-gray-800 text-gray-100 focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-400/40 text-sm"
+                                  />
+                                  <span>시간</span>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <button
+                              onClick={() => toggleGoalCollapsed(goal.id)}
+                              className="text-gray-400 hover:text-gray-200 transition"
+                              title={isCollapsed ? "펼치기" : "접기"}
+                            >
+                              {isCollapsed ? <ChevronDown size={18} /> : <ChevronUp size={18} />}
+                            </button>
+                            <button
+                              onClick={() => deleteGoal(goal.id)}
+                              className="text-gray-500 hover:text-red-400 transition"
+                              title="삭제"
+                            >
+                              <Trash2 size={18} />
+                            </button>
+                          </div>
+                        </div>
+
+                        {isCollapsed ? null : (
+                          <>
+                            <div className="mb-5">
+                              <div className="flex justify-between items-center mb-1.5">
+                                <span className="text-sm text-gray-300">진행률</span>
+                                <span className="text-base font-semibold text-blue-200">
+                                  {formatHoursVerbose(hours)} / {formatHoursVerbose(goal.targetHours)}
+                                </span>
+                              </div>
+                              <div className="w-full bg-gray-800 rounded-full h-2 overflow-hidden">
+                                <div
+                                  className={`h-full transition-all duration-300 ${
+                                    isComplete
+                                      ? "bg-blue-500"
+                                      : "bg-blue-500"
+                                  }`}
+                                  style={{ width: `${Math.max(progress, 5)}%` }}
+                                />
+                              </div>
+                              <p className="text-sm text-gray-300 mt-1.5">
+                                {isComplete ? "🎉 완료!" : getStatus(goal, effectiveSeconds)}
+                              </p>
+                            </div>
+
+                            <div className="bg-gray-900/75 border border-gray-700 rounded-lg p-4 mb-3.5">
+                              <div className="flex flex-wrap items-center justify-between gap-3">
+                                <div
+                                  className="flex-1 min-w-[140px] text-lg sm:text-xl font-mono font-bold text-cyan-300 tracking-wide"
+                                >
+                                  {isActive ? formatTime(timerSeconds) : "00:00:00"}
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  {isActive && (
+                                    <button
+                                      onClick={() => cancelTimer(goal.id)}
+                                      className="px-2.5 py-1.5 rounded-md font-semibold flex items-center gap-1 text-sm bg-red-500/90 hover:bg-red-400 text-white transition shadow-md"
+                                    >
+                                      <X size={14} /> 취소
+                                    </button>
+                                  )}
+                                  <button
+                                    onClick={() => (isActive ? stopTimer(goal.id) : startTimer(goal.id))}
+                                    className={`px-3 py-1.5 rounded-md font-semibold flex items-center gap-1.5 transition shadow-md text-sm ${
+                                      isActive
+                                        ? "bg-rose-500 hover:bg-rose-400 text-white"
+                                        : "bg-green-500 hover:bg-green-400 text-white"
+                                    }`}
+                                  >
+                                    {isActive ? <Pause size={18} /> : <Play size={18} />}
+                                    {isActive ? "저장" : "시작"}
+                                  </button>
+                                </div>
+                              </div>
+                            </div>
+                            <div>
+                              <div className="flex justify-between items-center mb-2">
+                                <h4 className="text-sm font-semibold text-gray-200">기록</h4>
+                                <div className="flex items-center gap-2">
+                                  <button
+                                    onClick={() => setShowAddLog(showAddLog === goal.id ? null : goal.id)}
+                                    className="text-xs text-gray-300 hover:text-white border border-gray-600 rounded px-2 py-1 transition flex items-center gap-1"
+                                  >
+                                    <Clock size={12} /> 추가
+                                  </button>
+                                  {goal.logs.length > 0 && (
+                                    <button
+                                      onClick={() => toggleEditingLogs(goal.id)}
+                                      className="text-xs text-gray-300 hover:text-white border border-gray-600 rounded px-2 py-1 transition"
+                                    >
+                                      {editingLogsGoalId === goal.id ? "완료" : "수정"}
+                                    </button>
+                                  )}
+                                </div>
+                              </div>
+                              
+                              {showAddLog === goal.id && (
+                                <div className="bg-gray-800/50 rounded-lg p-3 mb-3">
+                                  <div className="flex items-center gap-2 mb-2">
+                                    <input
+                                      type="number"
+                                      placeholder="시간"
+                                      value={newLogHours}
+                                      onChange={(e) => setNewLogHours(e.target.value)}
+                                      className="w-16 px-2 py-1 rounded border border-gray-700 bg-gray-700 text-gray-100 focus:outline-none focus:border-blue-400 text-sm"
+                                    />
+                                    <span className="text-gray-400 text-sm">시간</span>
+                                    <input
+                                      type="number"
+                                      placeholder="분"
+                                      value={newLogMinutes}
+                                      onChange={(e) => setNewLogMinutes(e.target.value)}
+                                      className="w-16 px-2 py-1 rounded border border-gray-700 bg-gray-700 text-gray-100 focus:outline-none focus:border-blue-400 text-sm"
+                                    />
+                                    <span className="text-gray-400 text-sm">분</span>
+                                  </div>
+                                  <div className="flex items-center gap-2">
+                                    <button
+                                      onClick={() => addManualLog(goal.id)}
+                                      className="px-3 py-1 bg-blue-500 hover:bg-blue-400 text-white rounded text-sm transition"
+                                    >
+                                      추가
+                                    </button>
+                                    <button
+                                      onClick={() => {
+                                        setShowAddLog(null);
+                                        setNewLogHours("");
+                                        setNewLogMinutes("");
+                                      }}
+                                      className="px-3 py-1 bg-gray-600 hover:bg-gray-500 text-white rounded text-sm transition"
+                                    >
+                                      취소
+                                    </button>
+                                  </div>
+                                </div>
+                              )}
+                              
+                              {goal.logs.length > 0 && (
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                  {goal.logs
+                                    .slice()
+                                    .reverse()
+                                    .map((log, idx) => {
+                                      const originalIndex = goal.logs.length - 1 - idx;
+                                      return (
+                                        <div
+                                          key={`${goal.id}-${idx}`}
+                                          className="bg-gray-800/80 rounded-md px-2.5 py-1.5 text-sm text-gray-200 flex items-center justify-between gap-3"
+                                        >
+                                          <div>
+                                            <span className="text-gray-400">{log.date}</span>
+                                            <span className="ml-2 text-cyan-400 font-mono">
+                                              +{formatHoursVerbose(log.seconds / 3600)}
+                                            </span>
+                                          </div>
+                                          {editingLogsGoalId === goal.id && (
+                                            <button
+                                              onClick={() => deleteGoalLog(goal.id, originalIndex)}
+                                              className="text-xs text-red-300 hover:text-red-200 border border-red-400/60 rounded px-1.5 py-0.5"
+                                              aria-label="기록 삭제"
+                                            >
+                                              ×
+                                            </button>
+                                          )}
+                                        </div>
+                                      );
+                                    })}
+                                </div>
+                              )}
+                            </div>
+                          </>
+                        )}
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+
+              {goals.length > 0 && (
+                <div className="mt-5 card-blur rounded-xl p-4">
+                  <h3 className="text-base font-semibold text-white mb-3">전체 통계</h3>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                    <div className="text-center">
+                      <p className="text-gray-400 text-sm">총 투자 시간</p>
+                      <p className="text-xl font-semibold text-cyan-400">
+                        {formatDuration(goals.reduce((acc, goal) => acc + goal.totalSeconds, 0))}
+                      </p>
+                    </div>
+                    <div className="text-center">
+                      <p className="text-gray-400 text-sm">총 목표 시간</p>
+                      <p className="text-xl font-semibold text-blue-400">
+                        {formatHoursVerbose(goals.reduce((acc, goal) => acc + goal.targetHours, 0))}
+                      </p>
+                    </div>
+                    <div className="text-center">
+                      <p className="text-gray-400 text-sm">진행 목표</p>
+                      <p className="text-xl font-semibold text-green-400">
+                        {goals.filter((goal) => getProgress(goal) >= 100).length}/{goals.length}
+                      </p>
+                    </div>
+                    <div className="text-center">
+                      <p className="text-gray-400 text-sm">평균 진행률</p>
+                      <p className="text-xl font-semibold text-purple-400">
+                        {(goals.reduce((acc, goal) => acc + getProgress(goal), 0) / goals.length).toFixed(0)}%
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      }
+
+      const root = createRoot(document.getElementById("root"));
+      root.render(<GoalTracker />);
+    </script>
+  </body>
+</html>
