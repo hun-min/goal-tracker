@@ -547,8 +547,8 @@
                     const dropboxHasData = dropboxData?.goals && dropboxData.goals.length > 0;
                     const localHasData = localParsed?.goals && localParsed.goals.length > 0;
                     
-                    if (dropboxHasData && (!localHasData || dropboxTime > localTime)) {
-                      // Dropbox에 데이터가 있고 (로컬이 비어있거나 Dropbox가 최신)
+                    if (dropboxHasData && dropboxTime >= localTime) {
+                      // Dropbox가 로컬보다 최신이거나 같을 때만 적용
                       setGoals(dropboxData.goals);
                       if (dropboxData.lists) setLists(dropboxData.lists);
                       if (dropboxData.selectedListId) setSelectedListId(dropboxData.selectedListId);
@@ -598,6 +598,29 @@
             })
             .catch(() => { dropboxInitializedRef.current = true; });
         }, []);
+
+        // 1분마다 Dropbox 확인
+        useEffect(() => {
+          if (!dropboxConnected) return;
+          const interval = setInterval(async () => {
+            try {
+              const res = await fetch('/api/dropbox/sync', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ mode: 'pull' })
+              });
+              const response = await res.json();
+              const dropboxData = response.contents ? JSON.parse(response.contents) : null;
+              if (dropboxData?.goals && dropboxData.goals.length > 0) {
+                setGoals(dropboxData.goals);
+                if (dropboxData.lists) setLists(dropboxData.lists);
+                if (dropboxData.selectedListId) setSelectedListId(dropboxData.selectedListId);
+                setLastDropboxSync(Date.now());
+              }
+            } catch (err) {}
+          }, 60000);
+          return () => clearInterval(interval);
+        }, [dropboxConnected]);
 
         const connectDropbox = async () => {
           try {
@@ -785,7 +808,7 @@
           }
           if (syncTimeoutRef.current) clearTimeout(syncTimeoutRef.current);
           
-          // Schedule Dropbox sync if connected and has data (only after initial sync)
+          // Schedule Dropbox sync if connected and has data (초기 로드 완료 후에만)
           if (dropboxConnected && goals.length > 0 && dropboxInitializedRef.current) {
             syncTimeoutRef.current = setTimeout(async () => {
               try {
