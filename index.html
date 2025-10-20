@@ -1723,10 +1723,14 @@ localStorage.removeItem('timer-state');
             )}
             {showWeeklyReport && (() => {
               const stats = getWeeklyStats();
+              const now = new Date();
+              const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+              const dateRange = `${weekAgo.toLocaleDateString('ko-KR', {month: 'numeric', day: 'numeric'})} ~ ${now.toLocaleDateString('ko-KR', {month: 'numeric', day: 'numeric'})}`;
               return (
                 <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4" onClick={() => setShowWeeklyReport(false)}>
                   <div className="bg-gray-800 rounded-lg p-4 max-w-md w-full" onClick={(e) => e.stopPropagation()}>
-                    <h2 className="text-sm font-bold text-white mb-3">📊 주간 리포트</h2>
+                    <h2 className="text-sm font-bold text-white mb-1">📊 주간 리포트</h2>
+                    <p className="text-xs text-gray-400 mb-3">{dateRange}</p>
                     <div className="space-y-2">
                       <div>
                         <p className="text-gray-400 text-xs">총 작업 시간</p>
@@ -2229,7 +2233,7 @@ localStorage.removeItem('timer-state');
                 </div>
               )}
 
-              <div className="space-y-3">
+              <div className="space-y-4">
                 {filteredGoals.length === 0 ? (
                   <div className="text-center py-8 text-gray-400 text-sm">목표를 추가해보세요</div>
                 ) : (
@@ -2564,7 +2568,7 @@ localStorage.removeItem('timer-state');
                                       </button>
                                       {isSelected && !isTodoTimerActive && (
                                         <button
-                                          onClick={(e) => { e.stopPropagation(); setGoals((prev) => prev.map((g) => g.id === goal.id ? { ...g, todos: g.todos.filter((t) => t.id !== todo.id) } : g)); setSelectedTodoId(null); }}
+                                          onClick={(e) => { e.stopPropagation(); if (window.confirm('이 할일을 삭제할까요?')) { setGoals((prev) => prev.map((g) => g.id === goal.id ? { ...g, todos: g.todos.filter((t) => t.id !== todo.id) } : g)); setSelectedTodoId(null); } }}
                                           className="text-red-400 hover:text-red-300 ml-1"
                                         >
                                           ×
@@ -2575,19 +2579,9 @@ localStorage.removeItem('timer-state');
                                 );
                               })}
                             </div>
-                            {goal.todos.length > 5 && (
-                              <div className="text-center mt-1">
-                                <button
-                                  onClick={(e) => { e.stopPropagation(); toggleExpandedTodos(goal.id); }}
-                                  className="text-xs text-gray-400 hover:text-gray-200"
-                                >
-                                  {expandedTodos.has(goal.id) ? "접기" : "더보기"}
-                                </button>
-                              </div>
-                            )}
                           </div>
                         )}
-                        <div className="mb-2">
+                        <div className="mb-2 flex items-center gap-2">
                           {showAddTodo === goal.id ? (
                             <div className="flex gap-1">
                               <input
@@ -2632,12 +2626,22 @@ localStorage.removeItem('timer-state');
                               </button>
                             </div>
                           ) : (
-                            <button
-                              onClick={() => setShowAddTodo(goal.id)}
-                              className="text-xs text-gray-400 hover:text-gray-200"
-                            >
-                              + 할일 추가
-                            </button>
+                            <>
+                              <button
+                                onClick={() => setShowAddTodo(goal.id)}
+                                className="text-xs text-gray-400 hover:text-gray-200"
+                              >
+                                + 할일 추가
+                              </button>
+                              {goal.todos && goal.todos.length > 5 && (
+                                <button
+                                  onClick={(e) => { e.stopPropagation(); toggleExpandedTodos(goal.id); }}
+                                  className="text-xs text-gray-400 hover:text-gray-200"
+                                >
+                                  {expandedTodos.has(goal.id) ? "접기" : "더보기"}
+                                </button>
+                              )}
+                            </>
                           )}
                         </div>
                         {goal.logs.length > 0 && (
