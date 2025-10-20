@@ -529,7 +529,8 @@
                       headers: { 'Content-Type': 'application/json' },
                       body: JSON.stringify({ mode: 'pull' })
                     });
-                    const dropboxData = await res.json();
+                    const response = await res.json();
+                    const dropboxData = response.contents ? JSON.parse(response.contents) : null;
                     
                     const localData = localStorage.getItem(STORAGE_KEY);
                     const localParsed = localData ? JSON.parse(localData) : null;
