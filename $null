@@ -1,0 +1,14 @@
+"(?s)hidden sm:flex.*?getTodayTotalSeconds.*?{20}" 구문 분석 - 중첩 수량자 {입니다.
+위치 줄:1 문자:1
++ (Get-Content 'index.html' -Raw) -match '(?s)hidden sm:flex.*?getToday ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : OperationStopped: (:) [], ArgumentException
+    + FullyQualifiedErrorId : System.ArgumentException
+ 
+null 배열에 대한 인덱스를 만들 수 없습니다.
+위치 줄:1 문자:103
++ ... hidden sm:flex.*?getTodayTotalSeconds.*?{20}' | Out-Null; $matches[0]
++                                                               ~~~~~~~~~~~
+    + CategoryInfo          : InvalidOperation: (:) [], RuntimeException
+    + FullyQualifiedErrorId : NullArray
+ 

@@ -1,0 +1,368 @@
+{
+  "syncedAt": "2025-10-21T12:59:44.548Z",
+  "goals": [
+    {
+      "id": 1761039968038,
+      "name": "ㅌㅅㅌ",
+      "targetHours": 1,
+      "totalSeconds": 14,
+      "logs": [
+        {
+          "date": "2025. 10. 21.",
+          "seconds": 14,
+          "memo": "",
+          "startTime": "18:46",
+          "endTime": "18:46",
+          "fromTodo": ""
+        }
+      ],
+      "todos": [],
+      "createdAt": "2025-10-21T09:46:08.038Z",
+      "completedAt": null,
+      "listId": "default"
+    },
+    {
+      "id": 1760915932756,
+      "name": "돌잔치 마무리",
+      "targetHours": 4,
+      "totalSeconds": 0,
+      "logs": [],
+      "todos": [
+        {
+          "id": 1760915940291,
+          "text": "옷 입어보기",
+          "done": false,
+          "indent": 0
+        },
+        {
+          "id": 1760915950580,
+          "text": "다엘이 옷 준비",
+          "done": false,
+          "indent": 0
+        },
+        {
+          "id": 1760915955330,
+          "text": "수건 준비",
+          "done": false
+        },
+        {
+          "id": 1760915961118,
+          "text": "선물 준비",
+          "done": false,
+          "indent": 0
+        },
+        {
+          "id": 1760915966535,
+          "text": "영상 준비",
+          "done": false,
+          "indent": 0
+        }
+      ],
+      "createdAt": "2025-10-19T23:18:52.756Z",
+      "completedAt": null,
+      "listId": "default"
+    },
+    {
+      "id": 1760911064805,
+      "name": "치우기",
+      "targetHours": 0,
+      "totalSeconds": 600,
+      "logs": [
+        {
+          "date": "2025. 10. 20.",
+          "seconds": 600,
+          "memo": "빨래개기 "
+        },
+        {
+          "date": "2025. 10. 20.",
+          "seconds": 0,
+          "memo": "빨래개기",
+          "fromTodo": true
+        }
+      ],
+      "todos": [],
+      "createdAt": "2025-10-19T21:57:44.805Z",
+      "completedAt": null,
+      "listId": "default"
+    },
+    {
+      "id": 1760692234452,
+      "name": "영어",
+      "targetHours": 50,
+      "totalSeconds": 0,
+      "logs": [],
+      "createdAt": "2025-10-17T09:10:34.452Z",
+      "completedAt": null,
+      "listId": "default",
+      "todos": []
+    },
+    {
+      "id": 1760684375205,
+      "name": "일단 담주 설계 목록 작성",
+      "targetHours": 0.3333333333333333,
+      "totalSeconds": 4338,
+      "logs": [
+        {
+          "date": "2025. 10. 17.",
+          "seconds": 3600,
+          "memo": ""
+        },
+        {
+          "date": "2025. 10. 17.",
+          "seconds": 110,
+          "memo": ""
+        },
+        {
+          "date": "2025. 10. 17.",
+          "seconds": 510,
+          "memo": ""
+        },
+        {
+          "date": "2025. 10. 17.",
+          "seconds": 118,
+          "memo": ""
+        }
+      ],
+      "createdAt": "2025-10-17T06:59:35.205Z",
+      "completedAt": "2025-10-20T09:09:51.420Z",
+      "listId": "list-1760431459862"
+    },
+    {
+      "id": 1760496459191,
+      "name": "국보디자인 답변",
+      "targetHours": 0.1,
+      "totalSeconds": 360,
+      "logs": [
+        {
+          "date": "2025. 10. 15.",
+          "seconds": 360
+        }
+      ],
+      "createdAt": "2025-10-15T02:47:39.191Z",
+      "listId": "list-1760431459862",
+      "completedAt": "2025-10-17T06:54:21.829Z",
+      "executed": false,
+      "executedAt": null
+    },
+    {
+      "id": 1760692528180,
+      "name": "요거 수정",
+      "targetHours": 40,
+      "totalSeconds": 43353,
+      "logs": [
+        {
+          "date": "2025. 10. 21.",
+          "seconds": 28800,
+          "memo": "할 일 자체에 시간 기록 수정 추가",
+          "fromTodo": true,
+          "startTime": "10:03",
+          "endTime": "18:03"
+        },
+        {
+          "date": "2025. 10. 21.",
+          "seconds": 0,
+          "memo": "할 일마다 시간.. 필요할 듯",
+          "fromTodo": true
+        },
+        {
+          "date": "2025. 10. 21.",
+          "seconds": 0,
+          "memo": "순서변경도 맘에 안들고",
+          "fromTodo": true
+        },
+        {
+          "date": "2025. 10. 21.",
+          "seconds": 0,
+          "memo": "엔터누르면 할일 다음칸 바로 만들어져야지",
+          "fromTodo": true
+        },
+        {
+          "date": "2025. 10. 21.",
+          "seconds": 0,
+          "memo": "아이콘 변경 안됨",
+          "fromTodo": true
+        },
+        {
+          "date": "2025. 10. 21.",
+          "seconds": 0,
+          "memo": "오늘 10분 글씨 2줄 됨 모바일",
+          "fromTodo": true
+        },
+        {
+          "date": "2025. 10. 20.",
+          "seconds": 14400,
+          "memo": "-"
+        },
+        {
+          "date": "2025. 10. 20.",
+          "seconds": 0,
+          "memo": "조금 더 카드마다 분간가게",
+          "fromTodo": true
+        },
+        {
+          "date": "2025. 10. 20.",
+          "seconds": 0,
+          "memo": "할일 추가 조금 위로",
+          "fromTodo": true
+        },
+        {
+          "date": "2025. 10. 20.",
+          "seconds": 0,
+          "memo": "목표 시간이 너무 거대해 보이면 압박감 느끼는데 어떻게 해야할까 일단 하다보면 처음엔 개똥 같다가 나중에 완성 되는데 그걸 하고 싶은데",
+          "fromTodo": true
+        },
+        {
+          "date": "2025. 10. 20.",
+          "seconds": 0,
+          "memo": "할일에 별도 시간 추가 설정(합쳐지지 않는 방식)",
+          "fromTodo": true
+        },
+        {
+          "date": "2025. 10. 20.",
+          "seconds": 0,
+          "memo": "주간이 며칠부터 며칠까진지 모르겠네",
+          "fromTodo": true
+        },
+        {
+          "date": "2025. 10. 20.",
+          "seconds": 0,
+          "memo": "할일 삭제 시 확인 필요",
+          "fromTodo": true
+        },
+        {
+          "date": "2025. 10. 20.",
+          "seconds": 0,
+          "memo": "아디 여러개로 돌려쓰기",
+          "fromTodo": true
+        },
+        {
+          "date": "2025. 10. 20.",
+          "seconds": 0,
+          "memo": "백업 정상화",
+          "fromTodo": true
+        },
+        {
+          "date": "2025. 10. 17.",
+          "seconds": 153,
+          "memo": " 오늘의 목표 해서 순서 변경으로 내려가면 포커스 따라 내려가야지, 그리고 타이머 집중 중이면 포커스 거기 고정돼야지. 그리고 할일리스트도 있음 좋겠고,  왜 노란색 잡히지 모바일에서, 모바일에서 리스트 떴을 때 스와이프로 밀어서 넣게 할 수 있으면 좋겠고, 껐다켜면 무조건 파일연결 뜨고"
+        }
+      ],
+      "createdAt": "2025-10-17T09:15:28.180Z",
+      "completedAt": null,
+      "listId": "default",
+      "todos": []
+    },
+    {
+      "id": 1760668859921,
+      "name": "일어",
+      "targetHours": 49.5,
+      "totalSeconds": 2584,
+      "logs": [
+        {
+          "date": "2025. 10. 17.",
+          "seconds": 1054,
+          "memo": "다 이루어질 지니스"
+        },
+        {
+          "date": "2025. 10. 17.",
+          "seconds": 150,
+          "memo": "-"
+        },
+        {
+          "date": "2025. 10. 14.",
+          "seconds": 1380,
+          "memo": "-"
+        }
+      ],
+      "createdAt": "2025-10-17T02:40:59.921Z",
+      "completedAt": null,
+      "listId": "default",
+      "executed": false,
+      "executedAt": null,
+      "todos": [
+        {
+          "id": 1760951821600,
+          "text": "다 이루어질지니",
+          "done": false
+        }
+      ]
+    },
+    {
+      "id": 1760675967803,
+      "name": "특허 마무리",
+      "targetHours": 17,
+      "totalSeconds": 1800,
+      "logs": [
+        {
+          "date": "2025. 10. 16.",
+          "seconds": 1800,
+          "memo": "-"
+        }
+      ],
+      "createdAt": "2025-10-17T04:39:27.803Z",
+      "completedAt": null,
+      "listId": "default"
+    },
+    {
+      "id": 1760429530493,
+      "name": "11",
+      "targetHours": 1,
+      "totalSeconds": 0,
+      "logs": [],
+      "createdAt": "2025-10-14T08:12:10.493Z",
+      "listId": "list-1760429527423"
+    },
+    {
+      "id": 1760427447426,
+      "name": "`11",
+      "targetHours": 11,
+      "totalSeconds": 0,
+      "logs": [],
+      "createdAt": "2025-10-14T07:37:27.426Z",
+      "listId": "list-1760427437701"
+    },
+    {
+      "id": 1760426608375,
+      "name": "ㅁㅁ",
+      "targetHours": 1,
+      "totalSeconds": 0,
+      "logs": [],
+      "createdAt": "2025-10-14T07:23:28.375Z",
+      "listId": "list-1760426604039"
+    },
+    {
+      "id": 1760426436089,
+      "name": "11",
+      "targetHours": 1,
+      "totalSeconds": 0,
+      "logs": [],
+      "createdAt": "2025-10-14T07:20:36.089Z",
+      "listId": "list-1760426429678"
+    },
+    {
+      "id": 1760426030494,
+      "name": "dd",
+      "targetHours": 0.001,
+      "totalSeconds": 4,
+      "logs": [
+        {
+          "date": "2025. 10. 14.",
+          "seconds": 4
+        }
+      ],
+      "createdAt": "2025-10-14T07:13:50.494Z",
+      "listId": "list-1760425955541"
+    }
+  ],
+  "lists": [
+    {
+      "id": "default",
+      "name": "기본함"
+    },
+    {
+      "id": "list-1760431459862",
+      "name": "KMW"
+    }
+  ],
+  "selectedListId": "default"
+}

@@ -10,7 +10,7 @@ export default async function handler(req, res) {
     return res.status(401).json({ error: 'Dropbox not connected' });
   }
 
-  const { mode, contents } = req.body;
+  const { mode, contents, path } = req.body;
   if (!mode) {
     return res.status(400).json({ error: 'Missing mode' });
   }
@@ -21,7 +21,7 @@ export default async function handler(req, res) {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
-          'Dropbox-API-Arg': JSON.stringify({ path: DROPBOX_FILE_PATH })
+          'Dropbox-API-Arg': JSON.stringify({ path: path || DROPBOX_FILE_PATH })
         }
       });
       
@@ -45,7 +45,7 @@ export default async function handler(req, res) {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
-          'Dropbox-API-Arg': JSON.stringify({ path: DROPBOX_FILE_PATH, mode: 'overwrite' }),
+          'Dropbox-API-Arg': JSON.stringify({ path: path || DROPBOX_FILE_PATH, mode: 'overwrite' }),
           'Content-Type': 'application/octet-stream'
         },
         body: contents
