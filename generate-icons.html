@@ -4,211 +4,55 @@
   <title>Generate Icons</title>
 </head>
 <body>
-  <h3>Option 1: Target with Progress</h3>
-  <canvas id="canvas1-192" width="192" height="192"></canvas>
-  <canvas id="canvas1-512" width="512" height="512"></canvas>
+  <h3>4-Line Progress Bars</h3>
+  <canvas id="canvas-192" width="192" height="192"></canvas>
+  <canvas id="canvas-512" width="512" height="512"></canvas>
   <br>
-  <a id="download1-192" download="icon-192-v1.png">Download 192</a>
-  <a id="download1-512" download="icon-512-v1.png">Download 512</a>
-
-  <h3>Option 2: Clock Progress</h3>
-  <canvas id="canvas2-192" width="192" height="192"></canvas>
-  <canvas id="canvas2-512" width="512" height="512"></canvas>
-  <br>
-  <a id="download2-192" download="icon-192-v2.png">Download 192</a>
-  <a id="download2-512" download="icon-512-v2.png">Download 512</a>
-
-  <h3>Option 3: Stacked Progress</h3>
-  <canvas id="canvas3-192" width="192" height="192"></canvas>
-  <canvas id="canvas3-512" width="512" height="512"></canvas>
-  <br>
-  <a id="download3-192" download="icon-192-v3.png">Download 192</a>
-  <a id="download3-512" download="icon-512-v3.png">Download 512</a>
+  <a id="download-192" download="icon-192.png">Download 192</a>
+  <a id="download-512" download="icon-512.png">Download 512</a>
 
   <script>
-    // Option 1: Target with arrow and progress arc
-    function drawTarget(canvas) {
+    function draw4Lines(canvas) {
       const ctx = canvas.getContext('2d');
       const size = canvas.width;
       const center = size / 2;
       
-      // Dark background
-      ctx.fillStyle = '#0a0a0a';
-      ctx.fillRect(0, 0, size, size);
-      
-      // Target circles (concentric)
-      const circles = [0.4, 0.3, 0.2, 0.1];
-      circles.forEach((radius, i) => {
-        ctx.strokeStyle = i % 2 === 0 ? '#1e40af' : '#3b82f6';
-        ctx.lineWidth = size * 0.02;
-        ctx.beginPath();
-        ctx.arc(center, center, size * radius, 0, Math.PI * 2);
-        ctx.stroke();
-      });
-      
-      // Progress arc (75% complete)
-      ctx.strokeStyle = '#10b981';
-      ctx.lineWidth = size * 0.04;
-      ctx.lineCap = 'round';
-      ctx.beginPath();
-      ctx.arc(center, center, size * 0.45, -Math.PI/2, Math.PI * 1);
-      ctx.stroke();
-      
-      // Arrow pointing to center
-      ctx.fillStyle = '#10b981';
-      ctx.save();
-      ctx.translate(center, center * 0.3);
-      ctx.rotate(Math.PI / 2);
-      ctx.beginPath();
-      ctx.moveTo(0, -size * 0.08);
-      ctx.lineTo(size * 0.04, size * 0.04);
-      ctx.lineTo(-size * 0.04, size * 0.04);
-      ctx.closePath();
-      ctx.fill();
-      ctx.restore();
-      
-      // Arrow shaft
-      ctx.fillStyle = '#10b981';
-      ctx.fillRect(center - size * 0.01, center * 0.35, size * 0.02, size * 0.15);
-    }
-
-    // Option 2: Clock with progress filling
-    function drawClock(canvas) {
-      const ctx = canvas.getContext('2d');
-      const size = canvas.width;
-      const center = size / 2;
-      
-      // Gradient background
-      const grad = ctx.createLinearGradient(0, 0, size, size);
-      grad.addColorStop(0, '#1e3a8a');
-      grad.addColorStop(1, '#0f172a');
-      ctx.fillStyle = grad;
-      ctx.fillRect(0, 0, size, size);
-      
-      // Progress fill (pie chart style, 70%)
-      ctx.fillStyle = '#3b82f6';
-      ctx.beginPath();
-      ctx.moveTo(center, center);
-      ctx.arc(center, center, size * 0.4, -Math.PI/2, Math.PI * 0.9);
-      ctx.closePath();
-      ctx.fill();
-      
-      // Clock face
-      ctx.strokeStyle = '#e5e7eb';
-      ctx.lineWidth = size * 0.03;
-      ctx.beginPath();
-      ctx.arc(center, center, size * 0.4, 0, Math.PI * 2);
-      ctx.stroke();
-      
-      // Hour markers
-      ctx.fillStyle = '#e5e7eb';
-      for (let i = 0; i < 12; i++) {
-        const angle = (i * 30 - 90) * Math.PI / 180;
-        const x = center + Math.cos(angle) * size * 0.35;
-        const y = center + Math.sin(angle) * size * 0.35;
-        ctx.beginPath();
-        ctx.arc(x, y, size * 0.012, 0, Math.PI * 2);
-        ctx.fill();
-      }
-      
-      // Clock hands
-      ctx.strokeStyle = '#10b981';
-      ctx.lineWidth = size * 0.02;
-      ctx.lineCap = 'round';
-      
-      // Hour hand
-      ctx.beginPath();
-      ctx.moveTo(center, center);
-      const hourAngle = (240 - 90) * Math.PI / 180;
-      ctx.lineTo(center + Math.cos(hourAngle) * size * 0.2, center + Math.sin(hourAngle) * size * 0.2);
-      ctx.stroke();
-      
-      // Minute hand
-      ctx.beginPath();
-      ctx.moveTo(center, center);
-      const minAngle = (180 - 90) * Math.PI / 180;
-      ctx.lineTo(center + Math.cos(minAngle) * size * 0.28, center + Math.sin(minAngle) * size * 0.28);
-      ctx.stroke();
-    }
-
-    // Option 3: Stacked bars showing accumulated progress
-    function drawStacked(canvas) {
-      const ctx = canvas.getContext('2d');
-      const size = canvas.width;
-      const center = size / 2;
-      
-      // Dark background
       ctx.fillStyle = '#0f172a';
       ctx.fillRect(0, 0, size, size);
       
-      // Stacked progress bars (like logs accumulating)
       const bars = [
-        { width: 0.7, color: '#3b82f6' },
-        { width: 0.85, color: '#60a5fa' },
-        { width: 0.6, color: '#2563eb' },
-        { width: 0.95, color: '#10b981' },
-        { width: 0.75, color: '#3b82f6' }
+        { progress: 0.9, color: '#10b981' },
+        { progress: 0.7, color: '#3b82f6' },
+        { progress: 0.5, color: '#60a5fa' },
+        { progress: 0.3, color: '#2563eb' }
       ];
       
-      const barHeight = size * 0.08;
-      const spacing = size * 0.02;
-      const startY = center - (bars.length * (barHeight + spacing)) / 2;
+      const barHeight = size * 0.1;
+      const spacing = size * 0.05;
+      const totalHeight = bars.length * barHeight + (bars.length - 1) * spacing;
+      const startY = center - totalHeight / 2;
+      const barWidth = size * 0.7;
+      const startX = center - barWidth / 2;
       
       bars.forEach((bar, i) => {
         const y = startY + i * (barHeight + spacing);
-        const barWidth = size * bar.width * 0.7;
-        const x = center - barWidth / 2;
         
-        // Bar background
         ctx.fillStyle = '#1e293b';
-        ctx.fillRect(x, y, size * 0.7, barHeight);
+        ctx.fillRect(startX, y, barWidth, barHeight);
         
-        // Progress fill
         ctx.fillStyle = bar.color;
-        ctx.fillRect(x, y, barWidth, barHeight);
+        ctx.fillRect(startX, y, barWidth * bar.progress, barHeight);
       });
-      
-      // Target line
-      ctx.strokeStyle = '#10b981';
-      ctx.lineWidth = size * 0.008;
-      ctx.setLineDash([size * 0.02, size * 0.01]);
-      const targetX = center + size * 0.35 * 0.9;
-      ctx.beginPath();
-      ctx.moveTo(targetX, startY - spacing);
-      ctx.lineTo(targetX, startY + bars.length * (barHeight + spacing));
-      ctx.stroke();
-      ctx.setLineDash([]);
-      
-      // Checkmark at target
-      ctx.strokeStyle = '#10b981';
-      ctx.lineWidth = size * 0.015;
-      ctx.lineCap = 'round';
-      ctx.beginPath();
-      ctx.moveTo(targetX - size * 0.02, startY - spacing * 3);
-      ctx.lineTo(targetX, startY - spacing);
-      ctx.lineTo(targetX + size * 0.03, startY - spacing * 5);
-      ctx.stroke();
     }
 
-    // Generate all versions
-    ['1', '2', '3'].forEach(ver => {
-      const canvas192 = document.getElementById(`canvas${ver}-192`);
-      const canvas512 = document.getElementById(`canvas${ver}-512`);
-      
-      if (ver === '1') {
-        drawTarget(canvas192);
-        drawTarget(canvas512);
-      } else if (ver === '2') {
-        drawClock(canvas192);
-        drawClock(canvas512);
-      } else {
-        drawStacked(canvas192);
-        drawStacked(canvas512);
-      }
-      
-      document.getElementById(`download${ver}-192`).href = canvas192.toDataURL('image/png');
-      document.getElementById(`download${ver}-512`).href = canvas512.toDataURL('image/png');
-    });
+    const canvas192 = document.getElementById('canvas-192');
+    const canvas512 = document.getElementById('canvas-512');
+    
+    draw4Lines(canvas192);
+    draw4Lines(canvas512);
+    
+    document.getElementById('download-192').href = canvas192.toDataURL('image/png');
+    document.getElementById('download-512').href = canvas512.toDataURL('image/png');
   </script>
 </body>
 </html>
