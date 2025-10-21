@@ -309,10 +309,15 @@
                       JSON.stringify({
                         lists: parsed.lists,
                         selectedListId: parsed.selectedListId,
+                        togglApiToken: parsed.togglApiToken || '',
                         importedFrom: file.name,
                         importedAt: new Date().toISOString()
                       })
                     );
+                    if (parsed.togglApiToken) {
+                      TogglIntegration.setApiToken(parsed.togglApiToken);
+                      setTogglApiToken(parsed.togglApiToken);
+                    }
                   }
 
                   setStatusMessage(`${file.name}에서 데이터를 불러왔습니다.`);
@@ -520,6 +525,7 @@
         const [togglApiToken, setTogglApiToken] = useState(TogglIntegration.getApiToken());
         const [showTogglSettings, setShowTogglSettings] = useState(false);
         const [togglFormat, setTogglFormat] = useState(() => localStorage.getItem('toggl_format') || '( {current} / {target} | {progress}% )');
+        const [togglRunning, setTogglRunning] = useState(false);
         const persistence = useGoalDataPersistence({
           goals,
           setGoals,
@@ -830,16 +836,33 @@
           try {
             const saved = localStorage.getItem('timer-state');
             if (saved) {
-              const { activeTimer: savedTimer, timerStartTime: savedStart } = JSON.parse(saved);
+              const { activeTimer: savedTimer, timerStartTime: savedStart, togglEntryId: savedEntryId } = JSON.parse(saved);
               if (savedTimer && savedStart) {
                 const elapsed = Math.floor((Date.now() - savedStart) / 1000);
                 setActiveTimer(savedTimer);
                 setTimerSeconds(elapsed);
                 setTimerStartTime(savedStart);
+                if (savedEntryId) setTogglEntryId(savedEntryId);
               }
             }
           } catch (err) {}
         }, []);
+
+        useEffect(() => {
+          if (!togglApiToken) return;
+          const check = async () => {
+            try {
+              const res = await fetch(`/api/toggl/current?apiToken=${encodeURIComponent(togglApiToken)}`);
+              if (res.ok) {
+                const data = await res.json();
+                setTogglRunning(data.running);
+              }
+            } catch (err) {}
+          };
+          check();
+          const interval = setInterval(check, 30000);
+          return () => clearInterval(interval);
+        }, [togglApiToken]);
 
         useEffect(() => {
           if (activeTimer === null || !timerStartTime) return undefined;
@@ -1085,6 +1108,17 @@
           }
         };
 
+        const checkTogglStatus = async () => {
+          if (!togglApiToken) return;
+          try {
+            const res = await fetch(`/api/toggl/current?apiToken=${encodeURIComponent(togglApiToken)}`);
+            if (res.ok) {
+              const data = await res.json();
+              setTogglRunning(data.running);
+            }
+          } catch (err) {}
+        };
+
         const startTimer = async (goalId, todoText = "") => {
           const now = Date.now();
           const goal = goals.find(g => g.id === goalId);
@@ -1125,6 +1159,8 @@
             timerStartTime: now,
             togglEntryId: entryId
           }));
+          
+          checkTogglStatus();
         };
 
 
@@ -1168,6 +1204,8 @@
           setTimerStartTime(null);
           setTimerMemo("");
 localStorage.removeItem('timer-state');
+          
+          checkTogglStatus();
         };
 
         const deleteGoal = (goalId) => {
@@ -2290,10 +2328,11 @@ localStorage.removeItem('timer-state');
                       </button>
                       <button
                         onClick={() => setShowTogglSettings(true)}
-                        className={`h-7 w-7 flex items-center justify-center rounded-full ${togglApiToken ? 'bg-gradient-to-br from-pink-500 to-red-500' : 'bg-gray-700 hover:bg-gray-600'} text-white transition-all hover:scale-105 shadow-lg`}
+                        className={`h-7 w-7 flex items-center justify-center rounded-full ${togglApiToken ? 'bg-gradient-to-br from-pink-500 to-red-500' : 'bg-gray-700 hover:bg-gray-600'} text-white transition-all hover:scale-105 shadow-lg relative`}
                         title={togglApiToken ? 'Toggl 연결됨' : 'Toggl 설정'}
                       >
                         ⏱️
+                        {togglRunning && <span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-green-400 rounded-full animate-pulse"></span>}
                       </button>
                       {!dropboxConnected && (
                         <>
@@ -2758,40 +2797,6 @@ localStorage.removeItem('timer-state');
                                     />
                                     {isEditing ? (
                                       <div className="flex-1 flex items-center gap-1">
-                                        <button
-                                          onMouseDown={(e) => {
-                                            e.preventDefault();
-                                            e.stopPropagation();
-                                            const currentIndent = todo.indent || 0;
-                                            if (currentIndent > 0) {
-                                              setGoals((prev) => {
-                                                const newGoals = prev.map((g) => g.id === goal.id ? { ...g, todos: g.todos.map((t) => t.id === todo.id ? { ...t, indent: currentIndent - 1 } : t) } : g);
-                                                saveHistory(newGoals);
-                                                return newGoals;
-                                              });
-                                            }
-                                          }}
-                                          className="px-1.5 h-[24px] bg-gray-600 text-white rounded text-xs flex-shrink-0 flex items-center justify-center"
-                                        >
-                                          {'<'}
-                                        </button>
-                                        <button
-                                          onMouseDown={(e) => {
-                                            e.preventDefault();
-                                            e.stopPropagation();
-                                            const currentIndent = todo.indent || 0;
-                                            if (currentIndent < 3) {
-                                              setGoals((prev) => {
-                                                const newGoals = prev.map((g) => g.id === goal.id ? { ...g, todos: g.todos.map((t) => t.id === todo.id ? { ...t, indent: currentIndent + 1 } : t) } : g);
-                                                saveHistory(newGoals);
-                                                return newGoals;
-                                              });
-                                            }
-                                          }}
-                                          className="px-1.5 h-[24px] bg-gray-600 text-white rounded text-xs flex-shrink-0 flex items-center justify-center"
-                                        >
-                                          {'>'}
-                                        </button>
                                         <input
                                           type="text"
                                           defaultValue={todo.text}
@@ -2835,6 +2840,40 @@ localStorage.removeItem('timer-state');
                                           className="flex-1 px-1 bg-gray-700 text-gray-100 rounded border border-blue-400 focus:outline-none text-xs h-[24px]"
                                           style={{ marginLeft: `${(todo.indent || 0) * 8}px` }}
                                         />
+                                        <button
+                                          onMouseDown={(e) => {
+                                            e.preventDefault();
+                                            e.stopPropagation();
+                                            const currentIndent = todo.indent || 0;
+                                            if (currentIndent > 0) {
+                                              setGoals((prev) => {
+                                                const newGoals = prev.map((g) => g.id === goal.id ? { ...g, todos: g.todos.map((t) => t.id === todo.id ? { ...t, indent: currentIndent - 1 } : t) } : g);
+                                                saveHistory(newGoals);
+                                                return newGoals;
+                                              });
+                                            }
+                                          }}
+                                          className="px-1.5 h-[24px] bg-gray-600 text-white rounded text-xs flex-shrink-0 flex items-center justify-center"
+                                        >
+                                          {'<'}
+                                        </button>
+                                        <button
+                                          onMouseDown={(e) => {
+                                            e.preventDefault();
+                                            e.stopPropagation();
+                                            const currentIndent = todo.indent || 0;
+                                            if (currentIndent < 3) {
+                                              setGoals((prev) => {
+                                                const newGoals = prev.map((g) => g.id === goal.id ? { ...g, todos: g.todos.map((t) => t.id === todo.id ? { ...t, indent: currentIndent + 1 } : t) } : g);
+                                                saveHistory(newGoals);
+                                                return newGoals;
+                                              });
+                                            }
+                                          }}
+                                          className="px-1.5 h-[24px] bg-gray-600 text-white rounded text-xs flex-shrink-0 flex items-center justify-center"
+                                        >
+                                          {'>'}
+                                        </button>
                                       </div>
                                     ) : (
                                       <span
@@ -2880,18 +2919,44 @@ localStorage.removeItem('timer-state');
                             <div className="text-xs text-gray-400 mb-1">할일 (0)</div>
                           )}
                         </div>
-                        <div>
-                          {showAddTodo === goal.id ? (
-                            <div className="flex gap-1 mb-1 mt-1">
-                              <input
-                                type="text"
-                                placeholder="할일 입력"
-                                value={newTodoText}
-                                autoFocus
-                                onChange={(e) => setNewTodoText(e.target.value)}
-                                onKeyDown={(e) => {
-                                  if (e.key === 'Enter') {
-                                    e.preventDefault();
+                        <div className="mb-2">
+                          <div className="flex gap-1">
+                            <input
+                              type="text"
+                              value={newTodoText}
+                              onFocus={() => setShowAddTodo(goal.id)}
+                              onBlur={() => {
+                                if (!newTodoText.trim()) {
+                                  setShowAddTodo(null);
+                                }
+                              }}
+                              onChange={(e) => setNewTodoText(e.target.value)}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                  e.preventDefault();
+                                  if (newTodoText.trim()) {
+                                    setGoals((prev) => {
+                                      const newGoals = prev.map((g) => g.id === goal.id ? { ...g, todos: [...(g.todos || []), { id: Date.now(), text: newTodoText.trim(), done: false, indent: 0 }] } : g);
+                                      saveHistory(newGoals);
+                                      return newGoals;
+                                    });
+                                    setNewTodoText("");
+                                    setShowAddTodo(null);
+                                  }
+                                }
+                                if (e.key === 'Escape') {
+                                  setNewTodoText("");
+                                  setShowAddTodo(null);
+                                  e.target.blur();
+                                }
+                              }}
+                              placeholder="+ 할일 추가"
+                              className="flex-1 px-2 py-0.5 bg-transparent text-gray-400 rounded border border-transparent hover:border-gray-700 focus:outline-none focus:border-blue-400 focus:bg-gray-800 focus:text-gray-100 text-xs cursor-pointer"
+                            />
+                            {showAddTodo === goal.id && (
+                              <>
+                                <button
+                                  onClick={() => {
                                     if (newTodoText.trim()) {
                                       setGoals((prev) => {
                                         const newGoals = prev.map((g) => g.id === goal.id ? { ...g, todos: [...(g.todos || []), { id: Date.now(), text: newTodoText.trim(), done: false, indent: 0 }] } : g);
@@ -2900,48 +2965,24 @@ localStorage.removeItem('timer-state');
                                       });
                                       setNewTodoText("");
                                     }
-                                  }
-                                  if (e.key === 'Escape') {
+                                    setShowAddTodo(null);
+                                  }}
+                                  className="px-1.5 py-0.5 bg-blue-500 hover:bg-blue-400 text-white rounded text-xs"
+                                >
+                                  추가
+                                </button>
+                                <button
+                                  onClick={() => {
                                     setNewTodoText("");
                                     setShowAddTodo(null);
-                                  }
-                                }}
-                                className="flex-1 px-2 py-0.5 bg-gray-700 text-gray-100 rounded border border-blue-400 focus:outline-none text-xs"
-                              />
-                              <button
-                                onClick={() => {
-                                  if (newTodoText.trim()) {
-                                    setGoals((prev) => {
-                                      const newGoals = prev.map((g) => g.id === goal.id ? { ...g, todos: [...(g.todos || []), { id: Date.now(), text: newTodoText.trim(), done: false, indent: 0 }] } : g);
-                                      saveHistory(newGoals);
-                                      return newGoals;
-                                    });
-                                    setNewTodoText("");
-                                  }
-                                  setShowAddTodo(null);
-                                }}
-                                className="px-2 py-0.5 bg-blue-500 hover:bg-blue-400 text-white rounded text-xs"
-                              >
-                                추가
-                              </button>
-                              <button
-                                onClick={() => {
-                                  setNewTodoText("");
-                                  setShowAddTodo(null);
-                                }}
-                                className="px-2 py-0.5 bg-gray-600 hover:bg-gray-500 text-white rounded text-xs"
-                              >
-                                취소
-                              </button>
-                            </div>
-                          ) : (
-                            <button
-                              onClick={() => setShowAddTodo(goal.id)}
-                              className="text-xs text-gray-400 hover:text-gray-200 mb-2"
-                            >
-                              + 할일 추가
-                            </button>
-                          )}
+                                  }}
+                                  className="px-1.5 py-0.5 bg-gray-600 hover:bg-gray-500 text-white rounded text-xs"
+                                >
+                                  취소
+                                </button>
+                              </>
+                            )}
+                          </div>
                         </div>
                         {goal.todos && goal.todos.length > (todoShowCounts.get(goal.id) || 5) && (
                           <div className="flex items-center justify-center gap-2">
@@ -2979,7 +3020,7 @@ localStorage.removeItem('timer-state');
                           </div>
                         )}
                         {goal.logs.length > 0 && (
-                          <div className="mt-1">
+                          <div className="mt-3">
                             <div className="flex items-center justify-between mb-1">
                               <span className="text-xs text-gray-400">기록 ({goal.logs.length})</span>
                               <button
@@ -3264,7 +3305,7 @@ localStorage.removeItem('timer-state');
                       {dragOverGoalId === goal.id && draggingGoalId !== goal.id && dragPosition === 'after' && (
                         <div className="h-0.5 bg-blue-400 mt-2" />
                       )}
-                      </div>
+                    </div>
                     );
                   })}
                   {draggingGoalId && (
