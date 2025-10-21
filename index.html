@@ -115,6 +115,54 @@
         Undo2
       } from "https://esm.sh/lucide-react@0.368.0";
 
+      const TogglIntegration = {
+        getApiToken() { return localStorage.getItem('toggl_api_token') || ''; },
+        setApiToken(token) { localStorage.setItem('toggl_api_token', token); },
+        isConnected() { return !!this.getApiToken(); },
+        async startTimer(description, projectName = null) {
+          const apiToken = this.getApiToken();
+          if (!apiToken) return null;
+          try {
+            const response = await fetch('/api/toggl/start', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ apiToken, description, projectName })
+            });
+            if (!response.ok) {
+              const error = await response.json();
+              console.error('Toggl API error:', error);
+              alert('Toggl 시작 실패: ' + (error.error || 'Unknown error'));
+              return null;
+            }
+            const data = await response.json();
+            return data.entryId;
+          } catch (error) {
+            console.error('Toggl start error:', error);
+            return null;
+          }
+        },
+        async stopTimer(entryId) {
+          const apiToken = this.getApiToken();
+          if (!apiToken || !entryId) return false;
+          try {
+            const response = await fetch('/api/toggl/stop', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ apiToken, entryId })
+            });
+            if (!response.ok) {
+              const error = await response.json();
+              console.error('Toggl stop error:', error);
+              return false;
+            }
+            return true;
+          } catch (error) {
+            console.error('Toggl stop error:', error);
+            return false;
+          }
+        }
+      };
+
       const STORAGE_KEY = "goal-tracker-data-v1";
       const LISTS_STORAGE_KEY = "goal-tracker-lists-v1";
       const EXPORT_FILE_NAME = "goal-tracker-data.json";
@@ -468,6 +516,10 @@
         const [activeTimer, setActiveTimer] = useState(null);
         const [timerSeconds, setTimerSeconds] = useState(0);
         const [timerStartTime, setTimerStartTime] = useState(null);
+        const [togglEntryId, setTogglEntryId] = useState(null);
+        const [togglApiToken, setTogglApiToken] = useState(TogglIntegration.getApiToken());
+        const [showTogglSettings, setShowTogglSettings] = useState(false);
+        const [togglFormat, setTogglFormat] = useState(() => localStorage.getItem('toggl_format') || '( {current} / {target} | {progress}% )');
         const persistence = useGoalDataPersistence({
           goals,
           setGoals,
@@ -515,8 +567,6 @@
         const [showDailySuggestion, setShowDailySuggestion] = useState(true);
         const [confetti, setConfetti] = useState([]);
         const [showWeeklyReport, setShowWeeklyReport] = useState(false);
-        const [pomodoroMode, setPomodoroMode] = useState(false);
-        const [pomodoroPhase, setPomodoroPhase] = useState('work'); // 'work' or 'break'
         const [nextGoalSuggestion, setNextGoalSuggestion] = useState(null);
         const [todoShowCounts, setTodoShowCounts] = useState(() => new Map());
         const [logShowCounts, setLogShowCounts] = useState(() => new Map());
@@ -574,6 +624,10 @@
                       setGoals(dropboxData.goals);
                       if (dropboxData.lists) setLists(dropboxData.lists);
                       if (dropboxData.selectedListId) setSelectedListId(dropboxData.selectedListId);
+                      if (dropboxData.togglApiToken) {
+                        TogglIntegration.setApiToken(dropboxData.togglApiToken);
+                        setTogglApiToken(dropboxData.togglApiToken);
+                      }
                       setLastDropboxSync(Date.now());
                     } else if (!dropboxHasData && localHasData) {
                       // Dropbox가 비어있고 로컬에 데이터가 있으면 업로드
@@ -584,6 +638,7 @@
                         goals: localParsed.goals, 
                         lists: localListsParsed.lists || [], 
                         selectedListId: localListsParsed.selectedListId,
+                        togglApiToken: localListsParsed.togglApiToken || '',
                         savedAt: new Date().toISOString()
                       };
                       await fetch('/api/dropbox/sync', {
@@ -601,6 +656,7 @@
                         goals: localParsed.goals, 
                         lists: localListsParsed.lists || [], 
                         selectedListId: localListsParsed.selectedListId,
+                        togglApiToken: localListsParsed.togglApiToken || '',
                         savedAt: localParsed.savedAt
                       };
                       await fetch('/api/dropbox/sync', {
@@ -645,6 +701,10 @@
                 setGoals(dropboxData.goals);
                 if (dropboxData.lists) setLists(dropboxData.lists);
                 if (dropboxData.selectedListId) setSelectedListId(dropboxData.selectedListId);
+                if (dropboxData.togglApiToken) {
+                  TogglIntegration.setApiToken(dropboxData.togglApiToken);
+                  setTogglApiToken(dropboxData.togglApiToken);
+                }
                 setLastDropboxSync(Date.now());
               }
             } catch (err) {}
@@ -695,7 +755,7 @@
           }
           setDropboxSyncing(true);
           try {
-            const payload = { goals, lists, selectedListId, savedAt: new Date().toISOString() };
+            const payload = { goals, lists, selectedListId, togglApiToken, savedAt: new Date().toISOString() };
             console.log('[UPLOAD] Sending to Dropbox:', payload);
             const res = await fetch('/api/dropbox/sync', {
               method: 'POST',
@@ -751,6 +811,10 @@
             if (data?.goals) setGoals(data.goals);
             if (data?.lists) setLists(data.lists);
             if (data?.selectedListId) setSelectedListId(data.selectedListId);
+            if (data?.togglApiToken) {
+              TogglIntegration.setApiToken(data.togglApiToken);
+              setTogglApiToken(data.togglApiToken);
+            }
             setLastDropboxSync(Date.now());
             if (!silent) alert('✓ Dropbox 다운로드 완료');
           } catch (err) {
@@ -794,6 +858,7 @@
             const raw = localStorage.getItem(LISTS_STORAGE_KEY);
             let loadedLists = [];
             let loadedSelectedId = null;
+            let loadedTogglToken = '';
 
             if (raw) {
               const parsed = JSON.parse(raw);
@@ -802,6 +867,11 @@
               }
               if (parsed?.selectedListId) {
                 loadedSelectedId = parsed.selectedListId;
+              }
+              if (parsed?.togglApiToken) {
+                loadedTogglToken = parsed.togglApiToken;
+                TogglIntegration.setApiToken(loadedTogglToken);
+                setTogglApiToken(loadedTogglToken);
               }
             }
 
@@ -834,11 +904,11 @@
               return;
             }
             try {
-              const payload = JSON.stringify({ lists, selectedListId, savedAt: new Date().toISOString() });
+              const payload = JSON.stringify({ lists, selectedListId, togglApiToken, savedAt: new Date().toISOString() });
               localStorage.setItem(LISTS_STORAGE_KEY, payload);
             } catch (err) {}
           }
-        }, [lists, selectedListId]);
+        }, [lists, selectedListId, togglApiToken]);
 
         // Mark dirty and schedule sync when goals/lists change (1min timer pattern)
         const dataInitializedRef = useRef(false);
@@ -853,7 +923,7 @@
           if (dropboxConnected && goals.length > 0 && dropboxInitializedRef.current) {
             syncTimeoutRef.current = setTimeout(async () => {
               try {
-                const payload = { goals, lists, selectedListId, savedAt: new Date().toISOString() };
+                const payload = { goals, lists, selectedListId, togglApiToken, savedAt: new Date().toISOString() };
                 await fetch('/api/dropbox/sync', {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
@@ -871,12 +941,13 @@
                 syncedAt: new Date().toISOString(),
                 goals,
                 lists,
-                selectedListId
+                selectedListId,
+                togglApiToken
               }, null, 2);
               await persistence.writeFileHandle(persistence.fileHandleRef.current, syncPayload);
             }, 2000);
           }
-        }, [goals, lists, selectedListId, dropboxConnected]);
+        }, [goals, lists, selectedListId, togglApiToken, dropboxConnected]);
 
 
 
@@ -1014,34 +1085,56 @@
           }
         };
 
-        const startTimer = (goalId, todoText = "") => {
+        const startTimer = async (goalId, todoText = "") => {
           const now = Date.now();
+          const goal = goals.find(g => g.id === goalId);
+          const listId = goal?.listId || 'default';
+          const listName = lists.find(l => l.id === listId)?.name || '기본함';
+          const projectName = listId === 'default' ? null : listName;
+          
+          const currentSeconds = goal?.totalSeconds || 0;
+          const currentH = Math.floor(currentSeconds / 3600);
+          const currentM = Math.floor((currentSeconds % 3600) / 60);
+          const currentStr = currentH > 0 ? `${currentH}시간 ${currentM}분` : `${currentM}분`;
+          
+          const targetSeconds = (goal?.targetHours || 0) * 3600;
+          const targetH = Math.floor(targetSeconds / 3600);
+          const targetM = Math.floor((targetSeconds % 3600) / 60);
+          const targetStr = targetH > 0 ? `${targetH}시간 ${targetM}분` : `${targetM}분`;
+          
+          const progress = targetSeconds > 0 ? Math.min((currentSeconds / targetSeconds) * 100, 100).toFixed(0) : 0;
+          
+          let description = todoText ? `${goal?.name} - ${todoText}` : (goal?.name || 'Goal Tracker');
+          if (togglFormat) {
+            const formatted = togglFormat
+              .replace('{current}', currentStr)
+              .replace('{target}', targetStr)
+              .replace('{progress}', progress);
+            description += ` ${formatted}`;
+          }
+          
+          const entryId = await TogglIntegration.startTimer(description, projectName);
+          if (entryId) setTogglEntryId(entryId);
+          
           setActiveTimer(goalId);
           setTimerSeconds(0);
           setTimerStartTime(now);
           setTimerMemo(todoText);
           localStorage.setItem('timer-state', JSON.stringify({
             activeTimer: goalId,
-            timerStartTime: now
+            timerStartTime: now,
+            togglEntryId: entryId
           }));
         };
 
-        useEffect(() => {
-          if (!activeTimer || timerSeconds === 0) return;
-          if (pomodoroMode) {
-            if (pomodoroPhase === 'work' && timerSeconds === 25 * 60) {
-              alert('25분 작업 완료! 5분 휴식하세요.');
-              setPomodoroPhase('break');
-              setTimerSeconds(0);
-            } else if (pomodoroPhase === 'break' && timerSeconds === 5 * 60) {
-              alert('휴식 완료! 다시 작업을 시작하세요.');
-              setPomodoroPhase('work');
-              setTimerSeconds(0);
-            }
-          }
-        }, [timerSeconds, activeTimer, pomodoroMode, pomodoroPhase]);
 
-        const stopTimer = (goalId) => {
+
+        const stopTimer = async (goalId) => {
+          if (togglEntryId) {
+            await TogglIntegration.stopTimer(togglEntryId);
+            setTogglEntryId(null);
+          }
+          
           if (activeTimer === goalId && timerSeconds > 0) {
             const endTime = new Date();
             const startTime = new Date(timerStartTime);
@@ -1263,13 +1356,16 @@ localStorage.removeItem('timer-state');
           setDragOverGoalId(null);
         };
 
-        const cancelTimer = (goalId) => {
+        const cancelTimer = async (goalId) => {
           if (activeTimer === goalId) {
+            if (togglEntryId) {
+              await TogglIntegration.stopTimer(togglEntryId);
+              setTogglEntryId(null);
+            }
             setActiveTimer(null);
             setTimerSeconds(0);
             setTimerStartTime(null);
             setTimerMemo("");
-            setPomodoroPhase('work');
             localStorage.removeItem('timer-state');
           }
         };
@@ -1979,6 +2075,68 @@ localStorage.removeItem('timer-state');
               </div>
             )}
 
+            {showTogglSettings && (
+              <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4" onClick={() => setShowTogglSettings(false)}>
+                <div className="bg-gray-800 rounded-lg p-4 max-w-md w-full" onClick={(e) => e.stopPropagation()}>
+                  <h2 className="text-sm font-bold text-white mb-3">⏱️ Toggl 설정</h2>
+                  <div className="space-y-3">
+                    <div>
+                      <label className="text-xs text-gray-400 block mb-1">API 토큰</label>
+                      <input
+                        type="password"
+                        value={togglApiToken}
+                        onChange={(e) => setTogglApiToken(e.target.value)}
+                        placeholder="Toggl API 토큰 입력"
+                        className="w-full px-2 py-1.5 bg-gray-700 text-gray-100 rounded border border-gray-600 focus:outline-none focus:border-blue-400 text-sm"
+                      />
+                      <p className="text-xs text-gray-500 mt-1">Toggl → Profile → API Token</p>
+                    </div>
+                    <div>
+                      <label className="text-xs text-gray-400 block mb-1">표시 형식</label>
+                      <input
+                        type="text"
+                        value={togglFormat}
+                        onChange={(e) => setTogglFormat(e.target.value)}
+                        placeholder="( {current} / {target} | {progress}% )"
+                        className="w-full px-2 py-1.5 bg-gray-700 text-gray-100 rounded border border-gray-600 focus:outline-none focus:border-blue-400 text-sm"
+                      />
+                      <p className="text-xs text-gray-500 mt-1">"{'{current}'}" "{'{target}'}" "{'{progress}'}" 사용 가능. 비워두면 표시 안함</p>
+                    </div>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => {
+                          TogglIntegration.setApiToken(togglApiToken);
+                          localStorage.setItem('toggl_format', togglFormat);
+                          const payload = JSON.stringify({ lists, selectedListId, togglApiToken, savedAt: new Date().toISOString() });
+                          localStorage.setItem(LISTS_STORAGE_KEY, payload);
+                          setShowTogglSettings(false);
+                          alert('✓ Toggl 연결 완료');
+                        }}
+                        className="flex-1 px-3 py-1.5 bg-blue-500 hover:bg-blue-400 text-white rounded text-sm transition"
+                      >
+                        저장
+                      </button>
+                      {togglApiToken && (
+                        <button
+                          onClick={() => {
+                            TogglIntegration.setApiToken('');
+                            setTogglApiToken('');
+                            const payload = JSON.stringify({ lists, selectedListId, togglApiToken: '', savedAt: new Date().toISOString() });
+                            localStorage.setItem(LISTS_STORAGE_KEY, payload);
+                            setShowTogglSettings(false);
+                          }}
+                          className="px-3 py-1.5 bg-red-500 hover:bg-red-400 text-white rounded text-sm transition"
+                        >
+                          연결 해제
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                  <button onClick={() => setShowTogglSettings(false)} className="mt-3 w-full px-3 py-1.5 bg-gray-600 hover:bg-gray-500 text-white rounded text-sm transition">닫기</button>
+                </div>
+              </div>
+            )}
+
             {showShortcuts && (
               <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4" onClick={() => setShowShortcuts(false)}>
                 <div className="bg-gray-800 rounded-lg p-4 max-w-md w-full" onClick={(e) => e.stopPropagation()}>
@@ -2131,11 +2289,11 @@ localStorage.removeItem('timer-state');
                         📊
                       </button>
                       <button
-                        onClick={() => setPomodoroMode(!pomodoroMode)}
-                        className={`${pomodoroMode ? 'px-1.5 py-0.5 bg-gradient-to-br from-orange-500 to-red-500 text-white shadow-lg' : 'h-7 w-7 bg-gray-700 hover:bg-gray-600'} flex items-center gap-0.5 justify-center rounded-full text-xs transition-all hover:scale-105`}
-                        title="포모도로 (25분 작업 / 5분 휴식)"
+                        onClick={() => setShowTogglSettings(true)}
+                        className={`h-7 w-7 flex items-center justify-center rounded-full ${togglApiToken ? 'bg-gradient-to-br from-pink-500 to-red-500' : 'bg-gray-700 hover:bg-gray-600'} text-white transition-all hover:scale-105 shadow-lg`}
+                        title={togglApiToken ? 'Toggl 연결됨' : 'Toggl 설정'}
                       >
-                        🍅{pomodoroMode && <span className="text-[10px]">ON</span>}
+                        ⏱️
                       </button>
                       {!dropboxConnected && (
                         <>
@@ -2207,11 +2365,11 @@ localStorage.removeItem('timer-state');
                         📊
                       </button>
                       <button
-                        onClick={() => setPomodoroMode(!pomodoroMode)}
-                        className={`${pomodoroMode ? 'px-1.5 py-0.5 bg-gradient-to-br from-orange-500 to-red-500 text-white shadow-lg' : 'h-7 w-7 bg-gray-700 hover:bg-gray-600'} flex items-center gap-0.5 justify-center rounded-full transition-all hover:scale-105 text-xs`}
-                        title="포모도로 (25분 작업 / 5분 휴식)"
+                        onClick={() => setShowTogglSettings(true)}
+                        className={`h-7 w-7 flex items-center justify-center rounded-full ${togglApiToken ? 'bg-gradient-to-br from-pink-500 to-red-500' : 'bg-gray-700 hover:bg-gray-600'} text-white transition-all hover:scale-105 shadow-lg`}
+                        title={togglApiToken ? 'Toggl 연결됨' : 'Toggl 설정'}
                       >
-                        🍅{pomodoroMode && <span className="text-[10px]">ON</span>}
+                        ⏱️
                       </button>
                     {!dropboxConnected && (
                       <>
@@ -2509,11 +2667,7 @@ localStorage.removeItem('timer-state');
                                       })()}
                                     </div>
                                   )}
-                                  {pomodoroMode && (
-                                    <div className="text-xs font-bold" style={{color: pomodoroPhase === 'work' ? '#fb923c' : '#60a5fa'}}>
-                                      {pomodoroPhase === 'work' ? '🍅작업' : '☕휴식'}
-                                    </div>
-                                  )}
+
                                 </div>
                               ) : (
                                 goal.targetHours ? (
