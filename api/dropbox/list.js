@@ -1,11 +1,7 @@
 export default async function handler(req, res) {
-  if (req.method !== 'GET') {
-    return res.status(405).json({ error: 'Method not allowed' });
-  }
-
   const token = req.cookies?.dropbox_token;
   if (!token) {
-    return res.status(401).json({ error: 'Dropbox not connected' });
+    return res.status(401).json({ error: 'Not connected' });
   }
 
   try {
@@ -17,14 +13,14 @@ export default async function handler(req, res) {
       },
       body: JSON.stringify({ path: '/Apps/goal-tracker' })
     });
-    
+
     if (!response.ok) {
       throw new Error('List failed');
     }
-    
+
     const data = await response.json();
     return res.status(200).json(data.entries || []);
   } catch (err) {
-    return res.status(500).json({ error: err.message || 'List failed' });
+    return res.status(500).json({ error: err.message });
   }
 }
