@@ -5,7 +5,7 @@ export default async function handler(req, res) {
 
   const token = req.cookies?.dropbox_token;
   if (!token) {
-    return res.status(401).json({ error: 'Dropbox not connected' });
+    return res.status(401).json({ error: 'Not connected' });
   }
 
   const { path } = req.body;
@@ -22,13 +22,13 @@ export default async function handler(req, res) {
       },
       body: JSON.stringify({ path })
     });
-    
+
     if (!response.ok) {
       throw new Error('Delete failed');
     }
-    
+
     return res.status(200).json({ ok: true });
   } catch (err) {
-    return res.status(500).json({ error: err.message || 'Delete failed' });
+    return res.status(500).json({ error: err.message });
   }
 }
