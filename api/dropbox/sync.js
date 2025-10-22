@@ -52,7 +52,9 @@ export default async function handler(req, res) {
       });
       
       if (!response.ok) {
-        throw new Error('Upload failed');
+        const errorText = await response.text();
+        console.error('[dropbox] upload error:', response.status, errorText);
+        throw new Error(`Upload failed: ${response.status}`);
       }
       
       return res.status(200).json({ ok: true });

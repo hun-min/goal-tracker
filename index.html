@@ -605,6 +605,7 @@
         const [calendarDate, setCalendarDate] = useState(new Date());
         const [selectedDate, setSelectedDate] = useState(null);
         const [showStats, setShowStats] = useState(false);
+        const [showCompactTodos, setShowCompactTodos] = useState(false);
         const [nextGoalSuggestion, setNextGoalSuggestion] = useState(null);
         const [todoShowCounts, setTodoShowCounts] = useState(() => new Map());
         const [logShowCounts, setLogShowCounts] = useState(() => new Map());
@@ -2236,6 +2237,52 @@ localStorage.removeItem('timer-state');
                 </div>
               );
             })()}
+            {showCompactTodos && (
+              <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4" onClick={() => setShowCompactTodos(false)}>
+                <div className="bg-gray-800 rounded-lg p-4 max-w-2xl w-full max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+                  <h2 className="text-sm font-bold text-white mb-3">✓ 할일 목록</h2>
+                  <div className="space-y-3">
+                    {filteredGoals.filter(g => g.todos && g.todos.length > 0).map(goal => (
+                      <div key={goal.id} className="bg-gray-900 rounded p-3">
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="text-sm font-semibold text-white">{goal.name}</span>
+                          <span className="text-xs text-gray-400">{goal.todos.filter(t => !t.done).length}/{goal.todos.length}</span>
+                        </div>
+                        <div className="space-y-1">
+                          {goal.todos.map(todo => (
+                            <div key={todo.id} className="flex items-center gap-2 text-xs" style={{ marginLeft: `${(todo.indent || 0) * 12}px` }}>
+                              <input type="checkbox" checked={todo.done} onChange={() => {
+                                if (!todo.done) {
+                                  const actualSeconds = (todo.estimatedMinutes || 0) * 60;
+                                  setGoals((prev) => prev.map((g) => {
+                                    if (g.id === goal.id) {
+                                      return {
+                                        ...g,
+                                        todos: g.todos.filter(t => t.id !== todo.id),
+                                        logs: [{ date: new Date().toLocaleDateString("ko-KR"), seconds: actualSeconds, memo: todo.text, fromTodo: true, estimated: todo.estimatedMinutes }, ...g.logs]
+                                      };
+                                    }
+                                    return g;
+                                  }));
+                                } else {
+                                  setGoals((prev) => prev.map((g) => g.id === goal.id ? { ...g, todos: g.todos.map((t) => t.id === todo.id ? { ...t, done: !t.done } : t) } : g));
+                                }
+                              }} className="w-3 h-3" />
+                              {todo.estimatedMinutes && <span className="text-blue-400 text-[10px]">{todo.estimatedMinutes}분</span>}
+                              <span className={`flex-1 ${todo.done ? 'line-through text-gray-500' : 'text-gray-300'}`}>{todo.text}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                    {filteredGoals.filter(g => g.todos && g.todos.length > 0).length === 0 && (
+                      <div className="text-center text-gray-500 text-sm py-8">할일이 없습니다</div>
+                    )}
+                  </div>
+                  <button onClick={() => setShowCompactTodos(false)} className="mt-3 w-full px-3 py-1.5 bg-blue-500 hover:bg-blue-400 text-white rounded text-sm transition">닫기</button>
+                </div>
+              </div>
+            )}
             {showStats && (() => {
               const heatmap = getHeatmapData();
               const level = getLevel();
@@ -2709,6 +2756,13 @@ localStorage.removeItem('timer-state');
                         🏆
                       </button>
                       <button
+                        onClick={() => setShowCompactTodos(true)}
+                        className="h-7 w-7 flex items-center justify-center rounded-full bg-gradient-to-br from-green-500 to-teal-500 text-white text-xs shadow-lg transition-all hover:scale-105"
+                        title="할일 목록"
+                      >
+                        ✓
+                      </button>
+                      <button
                         onClick={() => setShowTogglSettings(true)}
                         className={`h-7 w-7 flex items-center justify-center rounded-full ${togglApiToken ? 'bg-gradient-to-br from-pink-500 to-red-500' : 'bg-gray-700 hover:bg-gray-600'} text-white transition-all hover:scale-105 shadow-lg relative`}
                         title={togglApiToken ? 'Toggl 연결됨' : 'Toggl 설정'}
@@ -2798,6 +2852,13 @@ localStorage.removeItem('timer-state');
                         title="통계 & 배지"
                       >
                         🏆
+                      </button>
+                      <button
+                        onClick={() => setShowCompactTodos(true)}
+                        className="h-7 w-7 flex items-center justify-center rounded-full bg-gradient-to-br from-green-500 to-teal-500 text-white text-xs shadow-lg transition-all hover:scale-105"
+                        title="할일 목록"
+                      >
+                        ✓
                       </button>
                       <button
                         onClick={() => setShowTogglSettings(true)}
