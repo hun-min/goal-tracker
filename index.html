@@ -167,7 +167,7 @@
       const LISTS_STORAGE_KEY = "goal-tracker-lists-v1";
       const EXPORT_FILE_NAME = "goal-tracker-data.json";
       const DROPBOX_SYNC_PATH = "/Apps/goal-tracker/goals.json";
-      const DROPBOX_BACKUP_PREFIX = "/Apps/GoalTracker/backup-";
+      const DROPBOX_BACKUP_PREFIX = "/Apps/goal-tracker/backup-";
       const MAX_BACKUPS = 10;
       const FILE_CONNECT_SHOWN_KEY = "goal-tracker-file-connect-shown";
 
@@ -1026,7 +1026,7 @@
                   
                   const listRes = await fetch('/api/dropbox/list');
                   const files = await listRes.json();
-                  const backups = files.filter(f => f.path_lower?.startsWith('/apps/goaltracker/backup-')).sort((a, b) => b.path_lower.localeCompare(a.path_lower));
+                  const backups = files.filter(f => f.path_lower?.startsWith('/apps/goal-tracker/backup-')).sort((a, b) => b.path_lower.localeCompare(a.path_lower));
                   for (let i = MAX_BACKUPS; i < backups.length; i++) {
                     await fetch('/api/dropbox/delete', {
                       method: 'POST',
