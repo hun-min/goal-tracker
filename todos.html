@@ -42,6 +42,7 @@
       const [timerMemo, setTimerMemo] = useState("");
       const [dropboxConnected, setDropboxConnected] = useState(false);
       const [editingTodoId, setEditingTodoId] = useState(null);
+      const [tempMinutes, setTempMinutes] = useState({});
 
       useEffect(() => {
         const loadData = async () => {
@@ -265,12 +266,35 @@
                     if (item.type === 'goal') {
                       const goal = item.goal;
                       const isTimerActive = activeTimer === goal.id && !timerMemo;
+                      const isEditingGoal = editingTodoId === `goal-${goal.id}`;
                       return (
-                        <div key={`goal-${goal.id}`} className="flex items-center gap-2 text-sm hover:bg-gray-800/20 rounded px-1 py-1">
+                        <div key={`goal-${goal.id}`} className="flex items-center text-sm hover:bg-gray-800/20 rounded px-1">
                           <input type="checkbox" checked={!!goal.completedAt} onChange={() => {}} className="w-3.5 h-3.5" disabled />
-                          <span className={`flex-1 font-medium ${goal.completedAt ? 'line-through text-gray-500' : 'text-gray-200'}`}>
-                            {goal.name}
-                          </span>
+                          {isEditingGoal ? (
+                            <input
+                              type="text"
+                              defaultValue={goal.name}
+                              autoFocus
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                  e.preventDefault();
+                                  const newGoals = goals.map(g => g.id === goal.id ? { ...g, name: e.target.value.trim() || goal.name } : g);
+                                  setGoals(newGoals);
+                                  saveToStorage(newGoals);
+                                  setEditingTodoId(null);
+                                }
+                                if (e.key === 'Escape') setEditingTodoId(null);
+                              }}
+                              className="flex-1 ml-2 px-1 py-0.5 bg-gray-700 text-gray-100 rounded focus:outline-none text-sm"
+                            />
+                          ) : (
+                            <div
+                              onClick={() => setEditingTodoId(`goal-${goal.id}`)}
+                              className={`flex-1 ml-2 py-1 font-medium cursor-pointer ${goal.completedAt ? 'line-through text-gray-500' : 'text-gray-200'}`}
+                            >
+                              {goal.name}
+                            </div>
+                          )}
                           <div className="flex items-center gap-1">
                             {isTimerActive && (
                               <>
@@ -296,51 +320,65 @@
                       return (
                         <div
                           key={`todo-${todo.id}`}
-                          className="flex items-center gap-2 text-sm hover:bg-gray-800/20 rounded px-1 py-1"
+                          className="flex items-center text-sm hover:bg-gray-800/20 rounded px-1"
                           style={{ marginLeft: `${((todo.indent || 0) + 1) * 20}px` }}
                         >
                             <input
                               type="checkbox"
                               checked={todo.done}
                               onChange={() => toggleTodo(goal.id, todo.id)}
-                              className="w-3.5 h-3.5"
+                              className="w-3.5 h-3.5 mr-2"
                             />
 
                             {isEditing ? (
-                              <div className="flex-1 flex items-center gap-2">
-                                <input
-                                  type="number"
-                                  defaultValue={todo.estimatedMinutes || ''}
-                                  placeholder="분"
-                                  onBlur={(e) => {
-                                    const val = parseInt(e.target.value) || 0;
-                                    updateTodo(goal.id, todo.id, todo.text, val);
-                                  }}
-                                  className="w-16 px-2 py-1 bg-gray-700 text-gray-100 rounded border border-blue-400 focus:outline-none"
-                                />
+                              <div className="flex-1 flex items-center" onClick={(e) => e.stopPropagation()}>
                                 <input
                                   type="text"
                                   defaultValue={todo.text}
                                   autoFocus
-                                  onBlur={(e) => {
-                                    updateTodo(goal.id, todo.id, e.target.value.trim() || todo.text, todo.estimatedMinutes);
-                                    setEditingTodoId(null);
-                                  }}
                                   onKeyDown={(e) => {
                                     if (e.key === 'Enter') {
-                                      e.target.blur();
+                                      e.preventDefault();
+                                      const text = e.target.value.trim();
+                                      const minsValue = tempMinutes[todo.id] ?? todo.estimatedMinutes;
+                                      const mins = minsValue ? parseInt(minsValue) : undefined;
+                                      const newGoals = goals.map((g) => {
+                                        if (g.id === goal.id) {
+                                          const todoIndex = g.todos.findIndex(t => t.id === todo.id);
+                                          const updatedTodos = [...g.todos];
+                                          if (text) {
+                                            updatedTodos[todoIndex] = { ...todo, text, estimatedMinutes: mins };
+                                          }
+                                          const newTodo = { id: Date.now(), text: '', done: false, indent: todo.indent || 0 };
+                                          updatedTodos.splice(todoIndex + 1, 0, newTodo);
+                                          return { ...g, todos: updatedTodos };
+                                        }
+                                        return g;
+                                      });
+                                      setGoals(newGoals);
+                                      saveToStorage(newGoals);
+                                      setTempMinutes({...tempMinutes, [todo.id]: undefined});
+                                      setEditingTodoId(Date.now());
                                     } else if (e.key === 'Escape') {
                                       setEditingTodoId(null);
+                                      setTempMinutes({...tempMinutes, [todo.id]: undefined});
                                     } else if (e.key === 'Tab') {
                                       e.preventDefault();
                                       updateIndent(goal.id, todo.id, e.shiftKey ? -1 : 1);
                                     }
                                   }}
-                                  className="flex-1 px-2 py-1 bg-gray-700 text-gray-100 rounded border border-blue-400 focus:outline-none"
+                                  className="flex-1 mr-2 px-1 py-0.5 bg-gray-700 text-gray-100 rounded focus:outline-none text-sm"
+                                />
+                                <input
+                                  type="number"
+                                  value={tempMinutes[todo.id] ?? todo.estimatedMinutes ?? ''}
+                                  placeholder="분"
+                                  onChange={(e) => setTempMinutes({...tempMinutes, [todo.id]: e.target.value})}
+                                  className="w-16 mr-2 px-1 py-0.5 bg-gray-700 text-gray-100 rounded focus:outline-none text-sm"
                                 />
                                 <button
                                   onClick={() => updateIndent(goal.id, todo.id, -1)}
-                                  className="px-2 py-1 bg-gray-600 text-white rounded"
+                                  className="px-2 py-1 mr-1 bg-gray-600 text-white rounded"
                                 >
                                   {'<'}
                                 </button>
@@ -352,14 +390,31 @@
                                 </button>
                               </div>
                             ) : (
-                              <span
-                                onClick={() => setEditingTodoId(todo.id)}
-                                className={`flex-1 cursor-pointer text-sm ${todo.done ? 'line-through text-gray-500' : 'text-gray-300'}`}
+
+                                <span
+                                  onClick={() => {
+                                  if (editingTodoId && editingTodoId !== todo.id) {
+                                    const editingGoal = goals.find(g => g.todos?.some(t => t.id === editingTodoId));
+                                    if (editingGoal) {
+                                      const editingTodo = editingGoal.todos.find(t => t.id === editingTodoId);
+                                      const textInput = document.querySelector('input[type="text"]');
+                                      const text = textInput?.value.trim();
+                                      const minsValue = tempMinutes[editingTodoId] ?? editingTodo.estimatedMinutes;
+                                      const mins = minsValue ? parseInt(minsValue) : undefined;
+                                      if (text) {
+                                        updateTodo(editingGoal.id, editingTodoId, text, mins);
+                                      }
+                                      setTempMinutes({...tempMinutes, [editingTodoId]: undefined});
+                                    }
+                                  }
+                                  setEditingTodoId(todo.id);
+                                }}
+                                className={`flex-1 mr-2 py-1 cursor-pointer text-sm ${todo.done ? 'line-through text-gray-500' : 'text-gray-300'}`}
                               >
                                 {todo.estimatedMinutes && (
                                   <span className="text-blue-400 text-xs mr-1">{todo.estimatedMinutes}분</span>
                                 )}
-                                {todo.text}
+                                {todo.text || ' '}
                               </span>
                             )}
 
