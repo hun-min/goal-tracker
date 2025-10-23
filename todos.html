@@ -20,6 +20,16 @@
       border: 2px solid rgba(148, 163, 184, 0.4);
       box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
     }
+    * {
+      -webkit-tap-highlight-color: transparent;
+      -webkit-touch-callout: none;
+      -webkit-user-select: none;
+      user-select: none;
+    }
+    input {
+      -webkit-user-select: text;
+      user-select: text;
+    }
   </style>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 </head>
@@ -43,6 +53,77 @@
       const [dropboxConnected, setDropboxConnected] = useState(false);
       const [editingTodoId, setEditingTodoId] = useState(null);
       const [tempMinutes, setTempMinutes] = useState({});
+      const [history, setHistory] = useState([]);
+      const [historyIndex, setHistoryIndex] = useState(-1);
+      const [editingText, setEditingText] = useState('');
+      const [selectedTodos, setSelectedTodos] = useState([]);
+      const [selectionAnchor, setSelectionAnchor] = useState(null);
+
+      useEffect(() => {
+        const handleKeyDown = (e) => {
+          if (e.target.tagName === 'INPUT') return;
+          if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
+            e.preventDefault();
+            if (historyIndex > 0) {
+              const prevGoals = history[historyIndex - 1];
+              setGoals(prevGoals);
+              saveToStorage(prevGoals, true);
+              setHistoryIndex(historyIndex - 1);
+            }
+          } else if (((e.ctrlKey || e.metaKey) && e.key === 'y') || ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'z')) {
+            e.preventDefault();
+            if (historyIndex < history.length - 1) {
+              const nextGoals = history[historyIndex + 1];
+              setGoals(nextGoals);
+              saveToStorage(nextGoals, true);
+              setHistoryIndex(historyIndex + 1);
+            }
+          } else if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+            const allTodos = [];
+            goals.forEach(goal => {
+              allTodos.push({ type: 'goal', id: `goal-${goal.id}`, goal });
+              if (goal.todos && goal.todos.length > 0) {
+                goal.todos.forEach(todo => {
+                  allTodos.push({ type: 'todo', id: todo.id, goal, todo });
+                });
+              }
+            });
+            
+            const currentIndex = allTodos.findIndex(item => 
+              item.type === 'goal' ? editingTodoId === item.id : editingTodoId === item.id
+            );
+            
+            if (currentIndex !== -1) {
+              e.preventDefault();
+              const nextIndex = e.key === 'ArrowUp' ? currentIndex - 1 : currentIndex + 1;
+              if (nextIndex >= 0 && nextIndex < allTodos.length) {
+                const nextItem = allTodos[nextIndex];
+                if (e.shiftKey) {
+                  if (!selectionAnchor) {
+                    setSelectionAnchor(currentIndex);
+                  }
+                  const start = Math.min(selectionAnchor || currentIndex, nextIndex);
+                  const end = Math.max(selectionAnchor || currentIndex, nextIndex);
+                  const selected = allTodos.slice(start, end + 1).filter(item => item.type === 'todo').map(item => item.todo.id);
+                  setSelectedTodos(selected);
+                } else {
+                  setSelectionAnchor(null);
+                  setSelectedTodos([]);
+                }
+                setEditingTodoId(nextItem.type === 'goal' ? nextItem.id : nextItem.id);
+                if (nextItem.type === 'todo') {
+                  setEditingText(nextItem.todo.text);
+                } else {
+                  setEditingText(nextItem.goal.name);
+                }
+              }
+            }
+          }
+        };
+        
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+      }, [editingTodoId, goals, history, historyIndex]);
 
       useEffect(() => {
         const loadData = async () => {
@@ -99,9 +180,17 @@
         return () => clearInterval(interval);
       }, [activeTimer, timerStartTime]);
 
-      const saveToStorage = (newGoals) => {
+      const saveToStorage = (newGoals, skipHistory = false) => {
         const payload = JSON.stringify({ goals: newGoals, savedAt: new Date().toISOString() });
         localStorage.setItem(STORAGE_KEY, payload);
+        
+        if (!skipHistory) {
+          const newHistory = history.slice(0, historyIndex + 1);
+          newHistory.push(newGoals);
+          if (newHistory.length > 50) newHistory.shift();
+          setHistory(newHistory);
+          setHistoryIndex(newHistory.length - 1);
+        }
         
         if (dropboxConnected) {
           setTimeout(async () => {
@@ -270,7 +359,7 @@
                       return (
                         <div 
                           key={`goal-${goal.id}`} 
-                          className="flex items-center text-sm hover:bg-gray-800/20 rounded px-1 relative cursor-pointer" 
+                          className="flex items-center text-sm md:hover:bg-gray-800/20 rounded px-1 relative cursor-pointer" 
                           style={{ height: '32px' }}
                           onClick={() => setEditingTodoId(`goal-${goal.id}`)}
                         >
@@ -334,7 +423,7 @@
                       return (
                         <div
                           key={`todo-${todo.id}`}
-                          className="flex items-center text-sm hover:bg-gray-800/20 rounded px-1 relative cursor-pointer"
+                          className={`flex items-center text-sm md:hover:bg-gray-800/20 rounded px-1 relative cursor-pointer ${selectedTodos.includes(todo.id) ? 'bg-blue-900/40' : ''}`}
                           style={{ marginLeft: `${((todo.indent || 0) + 1) * 20}px`, height: '32px' }}
                           onClick={() => {
                             if (editingTodoId && editingTodoId !== todo.id) {
@@ -352,6 +441,7 @@
                               }
                             }
                             setEditingTodoId(todo.id);
+                            setEditingText(todo.text);
                           }}
                         >
                             <input
@@ -373,14 +463,80 @@
                               <div className="absolute top-0 bottom-0 flex items-center bg-gray-900" style={{ left: '22px', right: '80px' }} onClick={(e) => e.stopPropagation()}>
                                 <input
                                   type="text"
-                                  defaultValue={todo.text}
+                                  value={editingText}
+                                  onChange={(e) => setEditingText(e.target.value)}
                                   autoFocus
                                   onKeyDown={(e) => {
-                                    if (e.key === 'Enter') {
+                                    if (e.key === 'Backspace') {
+                                      const cursorPos = e.target.selectionStart;
+                                      if (cursorPos === 0) {
+                                        e.preventDefault();
+                                        const allTodos = [];
+                                        goals.forEach(g => {
+                                          allTodos.push({ type: 'goal', id: `goal-${g.id}`, goal: g });
+                                          if (g.todos && g.todos.length > 0) {
+                                            g.todos.forEach(t => {
+                                              allTodos.push({ type: 'todo', id: t.id, goal: g, todo: t });
+                                            });
+                                          }
+                                        });
+                                        const currentIndex = allTodos.findIndex(item => item.id === todo.id);
+                                        const prevItem = currentIndex > 0 ? allTodos[currentIndex - 1] : null;
+                                        
+                                        if (prevItem && prevItem.type === 'todo' && prevItem.goal.id === goal.id) {
+                                          const prevText = prevItem.todo.text;
+                                          const currentText = editingText;
+                                          const cursorPosition = prevText.length;
+                                          const newGoals = goals.map((g) => {
+                                            if (g.id === goal.id) {
+                                              return {
+                                                ...g,
+                                                todos: g.todos.map(t => {
+                                                  if (t.id === prevItem.todo.id) {
+                                                    return { ...t, text: prevText + currentText };
+                                                  }
+                                                  return t;
+                                                }).filter(t => t.id !== todo.id)
+                                              };
+                                            }
+                                            return g;
+                                          });
+                                          setGoals(newGoals);
+                                          saveToStorage(newGoals);
+                                          setTempMinutes({...tempMinutes, [todo.id]: undefined});
+                                          const mergedText = prevText + currentText;
+                                          setEditingTodoId(prevItem.id);
+                                          setEditingText(mergedText);
+                                          setTimeout(() => {
+                                            const input = document.querySelector('input[type="text"]');
+                                            if (input) {
+                                              input.focus();
+                                              input.setSelectionRange(cursorPosition, cursorPosition);
+                                            }
+                                          }, 0);
+                                        } else if (editingText === '') {
+                                          const newGoals = goals.map((g) => {
+                                            if (g.id === goal.id) {
+                                              return { ...g, todos: g.todos.filter(t => t.id !== todo.id) };
+                                            }
+                                            return g;
+                                          });
+                                          setGoals(newGoals);
+                                          saveToStorage(newGoals);
+                                          setTempMinutes({...tempMinutes, [todo.id]: undefined});
+                                          if (prevItem) {
+                                            setEditingTodoId(prevItem.id);
+                                          } else {
+                                            setEditingTodoId(null);
+                                          }
+                                        }
+                                      }
+                                    } else if (e.key === 'Enter') {
                                       e.preventDefault();
-                                      const text = e.target.value.trim();
+                                      const text = editingText.trim();
                                       const minsValue = tempMinutes[todo.id] ?? todo.estimatedMinutes;
                                       const mins = minsValue ? parseInt(minsValue) : undefined;
+                                      const newTodoId = Date.now();
                                       const newGoals = goals.map((g) => {
                                         if (g.id === goal.id) {
                                           const todoIndex = g.todos.findIndex(t => t.id === todo.id);
@@ -388,7 +544,7 @@
                                           if (text) {
                                             updatedTodos[todoIndex] = { ...todo, text, estimatedMinutes: mins };
                                           }
-                                          const newTodo = { id: Date.now(), text: '', done: false, indent: todo.indent || 0 };
+                                          const newTodo = { id: newTodoId, text: '', done: false, indent: todo.indent || 0 };
                                           updatedTodos.splice(todoIndex + 1, 0, newTodo);
                                           return { ...g, todos: updatedTodos };
                                         }
@@ -397,7 +553,113 @@
                                       setGoals(newGoals);
                                       saveToStorage(newGoals);
                                       setTempMinutes({...tempMinutes, [todo.id]: undefined});
-                                      setEditingTodoId(Date.now());
+                                      setEditingTodoId(newTodoId);
+                                      setEditingText('');
+                                    } else if (e.key === 'd' && e.ctrlKey) {
+                                      e.preventDefault();
+                                      const allTodos = [];
+                                      goals.forEach(g => {
+                                        allTodos.push({ type: 'goal', id: `goal-${g.id}`, goal: g });
+                                        if (g.todos && g.todos.length > 0) {
+                                          g.todos.forEach(t => {
+                                            allTodos.push({ type: 'todo', id: t.id, goal: g, todo: t });
+                                          });
+                                        }
+                                      });
+                                      const currentIndex = allTodos.findIndex(item => item.id === todo.id);
+                                      const nextItem = currentIndex < allTodos.length - 1 ? allTodos[currentIndex + 1] : (currentIndex > 0 ? allTodos[currentIndex - 1] : null);
+                                      
+                                      const newGoals = goals.map((g) => {
+                                        if (g.id === goal.id) {
+                                          return { ...g, todos: g.todos.filter(t => t.id !== todo.id) };
+                                        }
+                                        return g;
+                                      });
+                                      setGoals(newGoals);
+                                      saveToStorage(newGoals);
+                                      setTempMinutes({...tempMinutes, [todo.id]: undefined});
+                                      if (nextItem) {
+                                        setEditingTodoId(nextItem.id);
+                                      } else {
+                                        setEditingTodoId(null);
+                                      }
+                                    } else if (e.key === 'Delete' && e.target.value === '') {
+                                      e.preventDefault();
+                                      const allTodos = [];
+                                      goals.forEach(g => {
+                                        allTodos.push({ type: 'goal', id: `goal-${g.id}`, goal: g });
+                                        if (g.todos && g.todos.length > 0) {
+                                          g.todos.forEach(t => {
+                                            allTodos.push({ type: 'todo', id: t.id, goal: g, todo: t });
+                                          });
+                                        }
+                                      });
+                                      const currentIndex = allTodos.findIndex(item => item.id === todo.id);
+                                      const nextItem = currentIndex < allTodos.length - 1 ? allTodos[currentIndex + 1] : (currentIndex > 0 ? allTodos[currentIndex - 1] : null);
+                                      
+                                      const newGoals = goals.map((g) => {
+                                        if (g.id === goal.id) {
+                                          return { ...g, todos: g.todos.filter(t => t.id !== todo.id) };
+                                        }
+                                        return g;
+                                      });
+                                      setGoals(newGoals);
+                                      saveToStorage(newGoals);
+                                      setTempMinutes({...tempMinutes, [todo.id]: undefined});
+                                      if (nextItem) {
+                                        setEditingTodoId(nextItem.id);
+                                      } else {
+                                        setEditingTodoId(null);
+                                      }
+                                    } else if (e.key === 'Delete') {
+                                      const cursorPos = e.target.selectionStart;
+                                      const textLength = editingText.length;
+                                      if (cursorPos === textLength) {
+                                        e.preventDefault();
+                                        const allTodos = [];
+                                        goals.forEach(g => {
+                                          allTodos.push({ type: 'goal', id: `goal-${g.id}`, goal: g });
+                                          if (g.todos && g.todos.length > 0) {
+                                            g.todos.forEach(t => {
+                                              allTodos.push({ type: 'todo', id: t.id, goal: g, todo: t });
+                                            });
+                                          }
+                                        });
+                                        const currentIndex = allTodos.findIndex(item => item.id === todo.id);
+                                        const nextItem = currentIndex < allTodos.length - 1 ? allTodos[currentIndex + 1] : null;
+                                        
+                                        if (nextItem && nextItem.type === 'todo' && nextItem.goal.id === goal.id) {
+                                          const currentText = editingText;
+                                          const cursorPosition = currentText.length;
+                                          const nextText = nextItem.todo.text;
+                                          const newGoals = goals.map((g) => {
+                                            if (g.id === goal.id) {
+                                              return {
+                                                ...g,
+                                                todos: g.todos.map(t => {
+                                                  if (t.id === todo.id) {
+                                                    return { ...t, text: currentText + nextText };
+                                                  }
+                                                  return t;
+                                                }).filter(t => t.id !== nextItem.todo.id)
+                                              };
+                                            }
+                                            return g;
+                                          });
+                                          setGoals(newGoals);
+                                          saveToStorage(newGoals);
+                                          const mergedText = currentText + nextText;
+                                          setEditingTodoId(todo.id);
+                                          setEditingText(mergedText);
+                                          setTimeout(() => {
+                                            const input = document.querySelector('input[type="text"]');
+                                            if (input) {
+                                              input.focus();
+                                              input.setSelectionRange(cursorPosition, cursorPosition);
+                                            }
+                                          }, 0);
+                                        }
+                                      }
                                     } else if (e.key === 'Escape') {
                                       setEditingTodoId(null);
                                       setTempMinutes({...tempMinutes, [todo.id]: undefined});
