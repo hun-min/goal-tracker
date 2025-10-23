@@ -58,6 +58,22 @@
       const [editingText, setEditingText] = useState('');
       const [selectedTodos, setSelectedTodos] = useState([]);
       const [selectionAnchor, setSelectionAnchor] = useState(null);
+      const [sections, setSections] = useState([]);
+      const [draggedGoal, setDraggedGoal] = useState(null);
+
+      useEffect(() => {
+        const handleBeforeUnload = () => {
+          if (editingTodoId && editingTodoId.startsWith('goal-')) {
+            const goalId = parseInt(editingTodoId.replace('goal-', ''));
+            const goal = goals.find(g => g.id === goalId);
+            if (goal) {
+              updateGoal(goal.id, editingText, goal.estimatedMinutes, goal.indent);
+            }
+          }
+        };
+        window.addEventListener('beforeunload', handleBeforeUnload);
+        return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+      }, [editingTodoId, editingText, goals]);
 
       useEffect(() => {
         const handleKeyDown = (e) => {
@@ -134,6 +150,9 @@
               console.log('Loaded goals:', parsed.goals);
               setGoals(parsed.goals);
             }
+            if (parsed?.sections) {
+              setSections(parsed.sections);
+            }
           }
 
           if (window.location.protocol === 'file:') return;
@@ -152,6 +171,7 @@
               const response = await res.json();
               const dropboxData = response.contents ? JSON.parse(response.contents) : null;
               if (dropboxData?.goals) setGoals(dropboxData.goals);
+              if (dropboxData?.sections) setSections(dropboxData.sections);
             }
           } catch (err) {}
         };
@@ -180,8 +200,8 @@
         return () => clearInterval(interval);
       }, [activeTimer, timerStartTime]);
 
-      const saveToStorage = (newGoals, skipHistory = false) => {
-        const payload = JSON.stringify({ goals: newGoals, savedAt: new Date().toISOString() });
+      const saveToStorage = (newGoals, newSections = sections, skipHistory = false) => {
+        const payload = JSON.stringify({ goals: newGoals, sections: newSections, savedAt: new Date().toISOString() });
         localStorage.setItem(STORAGE_KEY, payload);
         
         if (!skipHistory) {
@@ -264,22 +284,6 @@
       const toggleTodo = (goalId, todoId) => {
         const newGoals = goals.map((g) => {
           if (g.id === goalId) {
-            const todo = g.todos.find(t => t.id === todoId);
-            if (!todo.done) {
-              const isTodoTimer = activeTimer === goalId && timerMemo === todo.text;
-              const actualSeconds = isTodoTimer ? timerSeconds : (todo.estimatedMinutes || 0) * 60;
-              return {
-                ...g,
-                todos: g.todos.filter(t => t.id !== todoId),
-                logs: [{
-                  date: new Date().toLocaleDateString("ko-KR"),
-                  seconds: actualSeconds,
-                  memo: todo.text,
-                  fromTodo: true,
-                  estimated: todo.estimatedMinutes
-                }, ...g.logs]
-              };
-            }
             return { ...g, todos: g.todos.map(t => t.id === todoId ? { ...t, done: !t.done } : t) };
           }
           return g;
@@ -288,14 +292,55 @@
         saveToStorage(newGoals);
       };
 
-      const updateTodo = (goalId, todoId, text, estimatedMinutes) => {
+      const toggleGoal = (goalId) => {
+        const newGoals = goals.map((g) => {
+          if (g.id === goalId) {
+            return { ...g, completedAt: g.completedAt ? null : new Date().toISOString() };
+          }
+          return g;
+        });
+        setGoals(newGoals);
+        saveToStorage(newGoals);
+      };
+
+      const updateTodo = (goalId, todoId, text, estimatedMinutes, indent) => {
         const newGoals = goals.map((g) => 
           g.id === goalId 
-            ? { ...g, todos: g.todos.map(t => t.id === todoId ? { ...t, text, estimatedMinutes } : t) }
+            ? { ...g, todos: g.todos.map(t => t.id === todoId ? { ...t, text, estimatedMinutes, indent } : t) }
             : g
         );
         setGoals(newGoals);
         saveToStorage(newGoals);
+      };
+
+      const updateGoal = (goalId, name, estimatedMinutes, indent) => {
+        const newGoals = goals.map((g) => 
+          g.id === goalId ? { ...g, name, estimatedMinutes, indent } : g
+        );
+        setGoals(newGoals);
+        saveToStorage(newGoals);
+      };
+
+      const addGoal = (sectionId = null, afterGoalId = null) => {
+        const newGoal = {
+          id: Date.now(),
+          name: '',
+          totalSeconds: 0,
+          logs: [],
+          todos: [],
+          sectionId
+        };
+        let newGoals;
+        if (afterGoalId) {
+          const index = goals.findIndex(g => g.id === afterGoalId);
+          newGoals = [...goals.slice(0, index + 1), newGoal, ...goals.slice(index + 1)];
+        } else {
+          newGoals = [...goals, newGoal];
+        }
+        setGoals(newGoals);
+        saveToStorage(newGoals, sections);
+        setEditingTodoId(`goal-${newGoal.id}`);
+        setEditingText('');
       };
 
       const updateIndent = (goalId, todoId, delta) => {
@@ -325,8 +370,45 @@
         return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
       };
 
+      const addDateSection = () => {
+        const today = new Date().toLocaleDateString('ko-KR');
+        if (sections.some(s => s.date === today)) return;
+        const newSection = { id: Date.now(), date: today };
+        const newSections = [newSection, ...sections];
+        setSections(newSections);
+        saveToStorage(goals, newSections);
+      };
+
+      const deleteSection = (sectionId) => {
+        const newSections = sections.filter(s => s.id !== sectionId);
+        setSections(newSections);
+        saveToStorage(goals, newSections);
+      };
+
+      const moveGoalToSection = (goalId, sectionId) => {
+        const newGoals = goals.map(g => 
+          g.id === goalId ? { ...g, sectionId } : g
+        );
+        setGoals(newGoals);
+        saveToStorage(newGoals, sections);
+      };
+
       const allTodos = [];
-      goals.forEach(goal => {
+      sections.forEach(section => {
+        allTodos.push({ type: 'section', section });
+        const sectionGoals = goals.filter(g => g.sectionId === section.id);
+        sectionGoals.forEach(goal => {
+          allTodos.push({ type: 'goal', goal });
+          if (goal.todos && goal.todos.length > 0) {
+            goal.todos.forEach(todo => {
+              allTodos.push({ type: 'todo', goal, todo });
+            });
+          }
+        });
+      });
+      
+      const noSectionGoals = goals.filter(g => !g.sectionId);
+      noSectionGoals.forEach(goal => {
         allTodos.push({ type: 'goal', goal });
         if (goal.todos && goal.todos.length > 0) {
           goal.todos.forEach(todo => {
@@ -340,65 +422,396 @@
           <div className="max-w-4xl mx-auto">
             <div className="flex items-center justify-between mb-4">
               <h1 className="text-xl font-bold text-white">✓ 할일 목록</h1>
-              <a href="index.html" className="px-3 py-1 bg-blue-500 hover:bg-blue-400 text-white rounded text-sm">
-                메인으로
-              </a>
+              <div className="flex gap-2">
+                <button onClick={addDateSection} className="px-3 py-1 bg-green-500 hover:bg-green-400 text-white rounded text-sm">
+                  + 날짜
+                </button>
+                <button onClick={() => addGoal(null)} className="px-3 py-1 bg-purple-500 hover:bg-purple-400 text-white rounded text-sm">
+                  + 할일
+                </button>
+                <a href="index.html" className="px-3 py-1 bg-blue-500 hover:bg-blue-400 text-white rounded text-sm">
+                  메인으로
+                </a>
+              </div>
             </div>
 
-            {allTodos.length === 0 ? (
-              <div className="text-center py-12 text-gray-400 text-sm">
-                할일이 없습니다
-              </div>
-            ) : (
-              <div>
-                  {allTodos.map((item, idx) => {
-                    if (item.type === 'goal') {
-                      const goal = item.goal;
+            <div className="mb-6">
+              <details className="group" open>
+                <summary className="cursor-pointer text-lg font-bold text-gray-300 mb-2 px-1 py-2 list-none flex items-center gap-2 rounded"
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    e.currentTarget.classList.add('bg-blue-900/20');
+                  }}
+                  onDragLeave={(e) => {
+                    e.currentTarget.classList.remove('bg-blue-900/20');
+                  }}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    e.currentTarget.classList.remove('bg-blue-900/20');
+                    if (draggedGoal) {
+                      moveGoalToSection(draggedGoal, null);
+                    }
+                  }}
+                >
+                  <span className="transform group-open:rotate-90 transition-transform">▶</span>
+                  <span>할일 모음</span>
+                </summary>
+                <div className="ml-4">
+                  {noSectionGoals.length === 0 ? (
+                    <div className="text-gray-500 text-sm px-1 py-2">대기중인 할일이 없습니다</div>
+                  ) : (
+                    noSectionGoals.map(goal => {
                       const isTimerActive = activeTimer === goal.id && !timerMemo;
                       const isEditingGoal = editingTodoId === `goal-${goal.id}`;
+                      const isNoSectionGoal = true;
+                      const goalKey = `nosection-${goal.id}`;
                       return (
                         <div 
                           key={`goal-${goal.id}`} 
                           className="flex items-center text-sm md:hover:bg-gray-800/20 rounded px-1 relative cursor-pointer" 
-                          style={{ height: '32px' }}
-                          onClick={() => setEditingTodoId(`goal-${goal.id}`)}
+                          style={{ marginLeft: `${(goal.indent || 0) * 20}px`, height: '32px' }}
+                          onClick={() => {
+                            if (editingTodoId && editingTodoId.startsWith('goal-') && editingTodoId !== `goal-${goal.id}`) {
+                              const prevGoalId = parseInt(editingTodoId.replace('goal-', ''));
+                              const prevGoal = goals.find(g => g.id === prevGoalId);
+                              if (prevGoal) {
+                                updateGoal(prevGoal.id, editingText, prevGoal.estimatedMinutes, prevGoal.indent);
+                              }
+                            }
+                            setEditingTodoId(`goal-${goal.id}`);
+                            setEditingText(goal.name);
+                          }}
+                          draggable
+                          onDragStart={(e) => {
+                            setDraggedGoal(goal.id);
+                            e.dataTransfer.effectAllowed = 'move';
+                          }}
+                          onDragEnd={() => setDraggedGoal(null)}
+                          onDragOver={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                          }}
+                          onDrop={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            if (draggedGoal && draggedGoal !== goal.id) {
+                              const draggedGoalObj = goals.find(g => g.id === draggedGoal);
+                              const targetGoalIndex = goals.findIndex(g => g.id === goal.id);
+                              const newGoals = goals.filter(g => g.id !== draggedGoal);
+                              newGoals.splice(targetGoalIndex, 0, { ...draggedGoalObj, sectionId: null });
+                              setGoals(newGoals);
+                              saveToStorage(newGoals, sections);
+                            }
+                          }}
                         >
                           <input 
                             type="checkbox" 
                             checked={!!goal.completedAt} 
-                            onChange={() => {}} 
+                            onChange={() => toggleGoal(goal.id)} 
                             className="w-3.5 h-3.5 mr-2 flex-shrink-0" 
-                            disabled 
                             onClick={(e) => e.stopPropagation()}
                           />
                           <div className={`flex-1 py-2 font-medium ${goal.completedAt ? 'line-through text-gray-500' : 'text-gray-200'}`}>
+                            {goal.estimatedMinutes && (
+                              <span className="text-blue-400 text-xs mr-1">{goal.estimatedMinutes}분</span>
+                            )}
                             {goal.name}
                           </div>
                           {isEditingGoal && (
                             <div className="absolute top-0 bottom-0 flex items-center bg-gray-900" style={{ left: '22px', right: '80px' }} onClick={(e) => e.stopPropagation()}>
                               <input
                                 type="text"
-                                defaultValue={goal.name}
+                                value={editingText}
+                                onChange={(e) => {
+                                  setEditingText(e.target.value);
+                                  updateGoal(goal.id, e.target.value, goal.estimatedMinutes, goal.indent);
+                                }}
                                 autoFocus
                                 onKeyDown={(e) => {
-                                  if (e.key === 'Enter') {
+                                  if (e.key === 'Backspace' && e.target.selectionStart === 0 && editingText === '') {
                                     e.preventDefault();
-                                    const text = e.target.value.trim();
-                                    if (text) {
-                                      const newGoals = goals.map(g => g.id === goal.id ? { ...g, name: text } : g);
-                                      setGoals(newGoals);
-                                      saveToStorage(newGoals);
-                                    }
+                                    const newGoals = goals.filter(g => g.id !== goal.id);
+                                    setGoals(newGoals);
+                                    saveToStorage(newGoals, sections);
                                     setEditingTodoId(null);
+                                  } else if (e.key === 'Delete' && editingText === '') {
+                                    e.preventDefault();
+                                    const newGoals = goals.filter(g => g.id !== goal.id);
+                                    setGoals(newGoals);
+                                    saveToStorage(newGoals, sections);
+                                    setEditingTodoId(null);
+                                  } else if (e.key === 'Enter') {
+                                    e.preventDefault();
+                                    addGoal(goal.sectionId, goal.id);
                                   } else if (e.key === 'Escape') {
                                     setEditingTodoId(null);
+                                  } else if (e.key === 'Tab') {
+                                    e.preventDefault();
+                                    const newIndent = Math.max(0, Math.min(3, (goal.indent || 0) + (e.shiftKey ? -1 : 1)));
+                                    updateGoal(goal.id, editingText, goal.estimatedMinutes, newIndent);
                                   }
                                 }}
-                                className="flex-1 px-1 py-1 bg-gray-700 text-gray-100 rounded focus:outline-none border-0 text-sm"
+                                className="flex-1 mr-2 px-1 py-1 bg-gray-700 text-gray-100 rounded focus:outline-none border-0 text-sm"
                               />
+                              <input
+                                type="number"
+                                value={tempMinutes[`goal-${goal.id}`] ?? goal.estimatedMinutes ?? ''}
+                                placeholder="분"
+                                onChange={(e) => {
+                                  setTempMinutes({...tempMinutes, [`goal-${goal.id}`]: e.target.value});
+                                  const mins = e.target.value ? parseInt(e.target.value) : undefined;
+                                  updateGoal(goal.id, editingText, mins, goal.indent);
+                                }}
+                                className="w-16 mr-2 px-1 py-1 bg-gray-700 text-gray-100 rounded focus:outline-none border-0 text-sm"
+                              />
+                              <button
+                                onClick={() => {
+                                  const newIndent = Math.max(0, (goal.indent || 0) - 1);
+                                  updateGoal(goal.id, editingText, goal.estimatedMinutes, newIndent);
+                                }}
+                                className="px-2 py-0.5 mr-1 bg-gray-600 text-white rounded text-xs"
+                              >
+                                {'<'}
+                              </button>
+                              <button
+                                onClick={() => {
+                                  const newIndent = Math.min(3, (goal.indent || 0) + 1);
+                                  updateGoal(goal.id, editingText, goal.estimatedMinutes, newIndent);
+                                }}
+                                className="px-2 py-0.5 bg-gray-600 text-white rounded text-xs"
+                              >
+                                {'>'}
+                              </button>
                             </div>
                           )}
                           <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                            {goal.totalSeconds > 0 && (
+                              <span className="text-gray-400 text-xs font-mono mr-1">{formatTime(goal.totalSeconds)}</span>
+                            )}
+                            {isTimerActive && (
+                              <>
+                                <span className="text-cyan-300 text-xs font-mono">{formatTime(timerSeconds)}</span>
+                                <button onClick={() => cancelTimer(goal.id)} className="px-1.5 py-0.5 bg-red-500 hover:bg-red-400 text-white rounded text-xs">
+                                  <X size={12} />
+                                </button>
+                              </>
+                            )}
+                            <button
+                              onClick={() => isTimerActive ? stopTimer(goal.id) : startTimer(goal.id)}
+                              className={`px-1.5 py-0.5 rounded text-xs ${isTimerActive ? 'bg-rose-500 hover:bg-rose-400' : 'bg-green-500 hover:bg-green-400'} text-white`}
+                            >
+                              {isTimerActive ? <Pause size={12} /> : <Play size={12} />}
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              </details>
+            </div>
+
+            {sections.length === 0 && noSectionGoals.length === 0 ? (
+              <div className="text-center py-12 text-gray-400 text-sm">
+                할일이 없습니다
+              </div>
+            ) : (
+              <div>
+                  {allTodos.filter(item => item.type !== 'goal' || item.goal.sectionId).map((item, idx) => {
+                    if (item.type === 'section') {
+                      const section = item.section;
+                      const sectionGoals = goals.filter(g => g.sectionId === section.id);
+                      return (
+                        <div 
+                          key={`section-wrapper-${section.id}`}
+                          onDragOver={(e) => e.preventDefault()}
+                          onDrop={(e) => {
+                            e.preventDefault();
+                            if (draggedGoal) {
+                              moveGoalToSection(draggedGoal, section.id);
+                            }
+                          }}
+                        >
+                        <div 
+                          key={`section-${section.id}`} 
+                          className="flex items-center justify-between text-lg font-bold text-gray-300 mt-6 mb-2 px-1 py-2 group rounded"
+                        >
+                          <div className="flex items-center gap-2">
+                            <span>{section.date}</span>
+                            <button 
+                              onClick={() => addGoal(section.id)} 
+                              className="opacity-0 group-hover:opacity-100 px-2 py-0.5 bg-green-500 hover:bg-green-400 text-white rounded text-xs"
+                            >
+                              + 할일
+                            </button>
+                          </div>
+                          <button 
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              deleteSection(section.id);
+                            }} 
+                            className="opacity-0 group-hover:opacity-100 px-2 py-0.5 bg-red-500 hover:bg-red-400 text-white rounded text-xs"
+                          >
+                            삭제
+                          </button>
+                        </div>
+                        {sectionGoals.length === 0 && (
+                          <div 
+                            className="h-16 border-2 border-dashed border-gray-700 rounded mb-2 flex items-center justify-center text-gray-500 text-sm"
+                            onDragOver={(e) => {
+                              e.preventDefault();
+                              e.currentTarget.classList.add('bg-blue-900/20', 'border-blue-500');
+                            }}
+                            onDragLeave={(e) => {
+                              e.currentTarget.classList.remove('bg-blue-900/20', 'border-blue-500');
+                            }}
+                            onDrop={(e) => {
+                              e.preventDefault();
+                              e.currentTarget.classList.remove('bg-blue-900/20', 'border-blue-500');
+                              if (draggedGoal) {
+                                moveGoalToSection(draggedGoal, section.id);
+                              }
+                            }}
+                          >
+                            여기에 할일을 드래그하세요
+                          </div>
+                        )}
+                        </div>
+                      );
+                    } else if (item.type === 'goal') {
+                      const goal = item.goal;
+                      const isTimerActive = activeTimer === goal.id && !timerMemo;
+                      const isEditingGoal = editingTodoId === `goal-${goal.id}`;
+                      const isNoSectionGoal = false;
+                      const goalKey = `section-${goal.id}`;
+                      return (
+                        <div 
+                          key={`goal-${goal.id}`} 
+                          className="flex items-center text-sm md:hover:bg-gray-800/20 rounded px-1 relative cursor-pointer" 
+                          style={{ marginLeft: `${(goal.indent || 0) * 20}px`, height: '32px' }}
+                          onClick={() => {
+                            if (editingTodoId && editingTodoId.startsWith('goal-') && editingTodoId !== `goal-${goal.id}`) {
+                              const prevGoalId = parseInt(editingTodoId.replace('goal-', ''));
+                              const prevGoal = goals.find(g => g.id === prevGoalId);
+                              if (prevGoal) {
+                                updateGoal(prevGoal.id, editingText, prevGoal.estimatedMinutes, prevGoal.indent);
+                              }
+                            }
+                            setEditingTodoId(`goal-${goal.id}`);
+                            setEditingText(goal.name);
+                          }}
+                          draggable
+                          onDragStart={(e) => {
+                            setDraggedGoal(goal.id);
+                            e.dataTransfer.effectAllowed = 'move';
+                          }}
+                          onDragEnd={() => setDraggedGoal(null)}
+                          onDragOver={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                          }}
+                          onDrop={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            if (draggedGoal && draggedGoal !== goal.id) {
+                              const draggedGoalObj = goals.find(g => g.id === draggedGoal);
+                              const targetGoalIndex = goals.findIndex(g => g.id === goal.id);
+                              const newGoals = goals.filter(g => g.id !== draggedGoal);
+                              newGoals.splice(targetGoalIndex, 0, { ...draggedGoalObj, sectionId: goal.sectionId });
+                              setGoals(newGoals);
+                              saveToStorage(newGoals, sections);
+                            }
+                          }}
+                        >
+                          <input 
+                            type="checkbox" 
+                            checked={!!goal.completedAt} 
+                            onChange={() => toggleGoal(goal.id)} 
+                            className="w-3.5 h-3.5 mr-2 flex-shrink-0" 
+                            onClick={(e) => e.stopPropagation()}
+                          />
+                          <div className={`flex-1 py-2 font-medium ${goal.completedAt ? 'line-through text-gray-500' : 'text-gray-200'}`}>
+                            {goal.estimatedMinutes && (
+                              <span className="text-blue-400 text-xs mr-1">{goal.estimatedMinutes}분</span>
+                            )}
+                            {goal.name}
+                          </div>
+                          {isEditingGoal && (
+                            <div className="absolute top-0 bottom-0 flex items-center bg-gray-900" style={{ left: '22px', right: '80px' }} onClick={(e) => e.stopPropagation()}>
+                              <input
+                                type="text"
+                                value={editingText}
+                                onChange={(e) => setEditingText(e.target.value)}
+                                autoFocus
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Backspace' && e.target.selectionStart === 0 && editingText === '') {
+                                    e.preventDefault();
+                                    const newGoals = goals.filter(g => g.id !== goal.id);
+                                    setGoals(newGoals);
+                                    saveToStorage(newGoals, sections);
+                                    setEditingTodoId(null);
+                                  } else if (e.key === 'Delete' && editingText === '') {
+                                    e.preventDefault();
+                                    const newGoals = goals.filter(g => g.id !== goal.id);
+                                    setGoals(newGoals);
+                                    saveToStorage(newGoals, sections);
+                                    setEditingTodoId(null);
+                                  } else if (e.key === 'Enter') {
+                                    e.preventDefault();
+                                    const minsValue = tempMinutes[`goal-${goal.id}`] ?? goal.estimatedMinutes;
+                                    const mins = minsValue ? parseInt(minsValue) : undefined;
+                                    updateGoal(goal.id, editingText, mins, goal.indent);
+                                    addGoal(goal.sectionId, goal.id);
+                                    setTempMinutes({...tempMinutes, [`goal-${goal.id}`]: undefined});
+                                  } else if (e.key === 'Escape') {
+                                    const minsValue = tempMinutes[`goal-${goal.id}`] ?? goal.estimatedMinutes;
+                                    const mins = minsValue ? parseInt(minsValue) : undefined;
+                                    updateGoal(goal.id, editingText, mins, goal.indent);
+                                    setEditingTodoId(null);
+                                    setTempMinutes({...tempMinutes, [`goal-${goal.id}`]: undefined});
+                                  } else if (e.key === 'Tab') {
+                                    e.preventDefault();
+                                    const newIndent = Math.max(0, Math.min(3, (goal.indent || 0) + (e.shiftKey ? -1 : 1)));
+                                    updateGoal(goal.id, editingText, goal.estimatedMinutes, newIndent);
+                                  }
+                                }}
+                                className="flex-1 mr-2 px-1 py-1 bg-gray-700 text-gray-100 rounded focus:outline-none border-0 text-sm"
+                              />
+                              <input
+                                type="number"
+                                value={tempMinutes[`goal-${goal.id}`] ?? goal.estimatedMinutes ?? ''}
+                                placeholder="분"
+                                onChange={(e) => setTempMinutes({...tempMinutes, [`goal-${goal.id}`]: e.target.value})}
+                                onBlur={(e) => {
+                                  const mins = e.target.value ? parseInt(e.target.value) : undefined;
+                                  updateGoal(goal.id, editingText, mins, goal.indent);
+                                }}
+                                className="w-16 mr-2 px-1 py-1 bg-gray-700 text-gray-100 rounded focus:outline-none border-0 text-sm"
+                              />
+                              <button
+                                onClick={() => {
+                                  const newIndent = Math.max(0, (goal.indent || 0) - 1);
+                                  updateGoal(goal.id, editingText, goal.estimatedMinutes, newIndent);
+                                }}
+                                className="px-2 py-0.5 mr-1 bg-gray-600 text-white rounded text-xs"
+                              >
+                                {'<'}
+                              </button>
+                              <button
+                                onClick={() => {
+                                  const newIndent = Math.min(3, (goal.indent || 0) + 1);
+                                  updateGoal(goal.id, editingText, goal.estimatedMinutes, newIndent);
+                                }}
+                                className="px-2 py-0.5 bg-gray-600 text-white rounded text-xs"
+                              >
+                                {'>'}
+                              </button>
+                            </div>
+                          )}
+                          <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                            {goal.totalSeconds > 0 && (
+                              <span className="text-gray-400 text-xs font-mono mr-1">{formatTime(goal.totalSeconds)}</span>
+                            )}
                             {isTimerActive && (
                               <>
                                 <span className="text-cyan-300 text-xs font-mono">{formatTime(timerSeconds)}</span>
@@ -466,69 +879,67 @@
                                   value={editingText}
                                   onChange={(e) => setEditingText(e.target.value)}
                                   autoFocus
+                                  className={`flex-1 mr-2 px-1 py-1 bg-gray-700 text-gray-100 rounded focus:outline-none border-0 text-sm ${todo.done ? 'line-through' : ''}`}
                                   onKeyDown={(e) => {
-                                    if (e.key === 'Backspace') {
-                                      const cursorPos = e.target.selectionStart;
-                                      if (cursorPos === 0) {
-                                        e.preventDefault();
-                                        const allTodos = [];
-                                        goals.forEach(g => {
-                                          allTodos.push({ type: 'goal', id: `goal-${g.id}`, goal: g });
-                                          if (g.todos && g.todos.length > 0) {
-                                            g.todos.forEach(t => {
-                                              allTodos.push({ type: 'todo', id: t.id, goal: g, todo: t });
-                                            });
+                                    if (e.key === 'Backspace' && e.target.selectionStart === 0) {
+                                      e.preventDefault();
+                                      const allTodos = [];
+                                      goals.forEach(g => {
+                                        allTodos.push({ type: 'goal', id: `goal-${g.id}`, goal: g });
+                                        if (g.todos && g.todos.length > 0) {
+                                          g.todos.forEach(t => {
+                                            allTodos.push({ type: 'todo', id: t.id, goal: g, todo: t });
+                                          });
+                                        }
+                                      });
+                                      const currentIndex = allTodos.findIndex(item => item.id === todo.id);
+                                      const prevItem = currentIndex > 0 ? allTodos[currentIndex - 1] : null;
+                                      
+                                      if (prevItem && prevItem.type === 'todo' && prevItem.goal.id === goal.id) {
+                                        const prevText = prevItem.todo.text;
+                                        const currentText = editingText;
+                                        const cursorPosition = prevText.length;
+                                        const newGoals = goals.map((g) => {
+                                          if (g.id === goal.id) {
+                                            return {
+                                              ...g,
+                                              todos: g.todos.map(t => {
+                                                if (t.id === prevItem.todo.id) {
+                                                  return { ...t, text: prevText + currentText };
+                                                }
+                                                return t;
+                                              }).filter(t => t.id !== todo.id)
+                                            };
                                           }
+                                          return g;
                                         });
-                                        const currentIndex = allTodos.findIndex(item => item.id === todo.id);
-                                        const prevItem = currentIndex > 0 ? allTodos[currentIndex - 1] : null;
-                                        
-                                        if (prevItem && prevItem.type === 'todo' && prevItem.goal.id === goal.id) {
-                                          const prevText = prevItem.todo.text;
-                                          const currentText = editingText;
-                                          const cursorPosition = prevText.length;
-                                          const newGoals = goals.map((g) => {
-                                            if (g.id === goal.id) {
-                                              return {
-                                                ...g,
-                                                todos: g.todos.map(t => {
-                                                  if (t.id === prevItem.todo.id) {
-                                                    return { ...t, text: prevText + currentText };
-                                                  }
-                                                  return t;
-                                                }).filter(t => t.id !== todo.id)
-                                              };
-                                            }
-                                            return g;
-                                          });
-                                          setGoals(newGoals);
-                                          saveToStorage(newGoals);
-                                          setTempMinutes({...tempMinutes, [todo.id]: undefined});
-                                          const mergedText = prevText + currentText;
-                                          setEditingTodoId(prevItem.id);
-                                          setEditingText(mergedText);
-                                          setTimeout(() => {
-                                            const input = document.querySelector('input[type="text"]');
-                                            if (input) {
-                                              input.focus();
-                                              input.setSelectionRange(cursorPosition, cursorPosition);
-                                            }
-                                          }, 0);
-                                        } else if (editingText === '') {
-                                          const newGoals = goals.map((g) => {
-                                            if (g.id === goal.id) {
-                                              return { ...g, todos: g.todos.filter(t => t.id !== todo.id) };
-                                            }
-                                            return g;
-                                          });
-                                          setGoals(newGoals);
-                                          saveToStorage(newGoals);
-                                          setTempMinutes({...tempMinutes, [todo.id]: undefined});
-                                          if (prevItem) {
-                                            setEditingTodoId(prevItem.id);
-                                          } else {
-                                            setEditingTodoId(null);
+                                        setGoals(newGoals);
+                                        saveToStorage(newGoals);
+                                        setTempMinutes({...tempMinutes, [todo.id]: undefined});
+                                        const mergedText = prevText + currentText;
+                                        setEditingTodoId(prevItem.id);
+                                        setEditingText(mergedText);
+                                        setTimeout(() => {
+                                          const input = document.querySelector('input[type="text"]');
+                                          if (input) {
+                                            input.focus();
+                                            input.setSelectionRange(cursorPosition, cursorPosition);
                                           }
+                                        }, 0);
+                                      } else if (editingText === '') {
+                                        const newGoals = goals.map((g) => {
+                                          if (g.id === goal.id) {
+                                            return { ...g, todos: g.todos.filter(t => t.id !== todo.id) };
+                                          }
+                                          return g;
+                                        });
+                                        setGoals(newGoals);
+                                        saveToStorage(newGoals);
+                                        setTempMinutes({...tempMinutes, [todo.id]: undefined});
+                                        if (prevItem) {
+                                          setEditingTodoId(prevItem.id);
+                                        } else {
+                                          setEditingTodoId(null);
                                         }
                                       }
                                     } else if (e.key === 'Enter') {
@@ -555,34 +966,6 @@
                                       setTempMinutes({...tempMinutes, [todo.id]: undefined});
                                       setEditingTodoId(newTodoId);
                                       setEditingText('');
-                                    } else if (e.key === 'd' && e.ctrlKey) {
-                                      e.preventDefault();
-                                      const allTodos = [];
-                                      goals.forEach(g => {
-                                        allTodos.push({ type: 'goal', id: `goal-${g.id}`, goal: g });
-                                        if (g.todos && g.todos.length > 0) {
-                                          g.todos.forEach(t => {
-                                            allTodos.push({ type: 'todo', id: t.id, goal: g, todo: t });
-                                          });
-                                        }
-                                      });
-                                      const currentIndex = allTodos.findIndex(item => item.id === todo.id);
-                                      const nextItem = currentIndex < allTodos.length - 1 ? allTodos[currentIndex + 1] : (currentIndex > 0 ? allTodos[currentIndex - 1] : null);
-                                      
-                                      const newGoals = goals.map((g) => {
-                                        if (g.id === goal.id) {
-                                          return { ...g, todos: g.todos.filter(t => t.id !== todo.id) };
-                                        }
-                                        return g;
-                                      });
-                                      setGoals(newGoals);
-                                      saveToStorage(newGoals);
-                                      setTempMinutes({...tempMinutes, [todo.id]: undefined});
-                                      if (nextItem) {
-                                        setEditingTodoId(nextItem.id);
-                                      } else {
-                                        setEditingTodoId(null);
-                                      }
                                     } else if (e.key === 'Delete' && e.target.value === '') {
                                       e.preventDefault();
                                       const allTodos = [];
@@ -668,7 +1051,6 @@
                                       updateIndent(goal.id, todo.id, e.shiftKey ? -1 : 1);
                                     }
                                   }}
-                                  className="flex-1 mr-2 px-1 py-1 bg-gray-700 text-gray-100 rounded focus:outline-none border-0 text-sm"
                                 />
                                 <input
                                   type="number"
@@ -693,6 +1075,9 @@
                             )}
 
                             <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                              {goal.totalSeconds > 0 && (
+                                <span className="text-gray-400 text-xs font-mono mr-1">{formatTime(goal.totalSeconds)}</span>
+                              )}
                               {isTodoTimerActive && (
                                 <>
                                   <span className="text-cyan-300 text-xs font-mono">
