@@ -2755,13 +2755,13 @@ localStorage.removeItem('timer-state');
                       >
                         🏆
                       </button>
-                      <button
-                        onClick={() => setShowCompactTodos(true)}
+                      <a
+                        href="todos.html"
                         className="h-7 w-7 flex items-center justify-center rounded-full bg-gradient-to-br from-green-500 to-teal-500 text-white text-xs shadow-lg transition-all hover:scale-105"
-                        title="할일 목록"
+                        title="할일 페이지"
                       >
                         ✓
-                      </button>
+                      </a>
                       <button
                         onClick={() => setShowTogglSettings(true)}
                         className={`h-7 w-7 flex items-center justify-center rounded-full ${togglApiToken ? 'bg-gradient-to-br from-pink-500 to-red-500' : 'bg-gray-700 hover:bg-gray-600'} text-white transition-all hover:scale-105 shadow-lg relative`}
