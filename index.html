@@ -915,8 +915,6 @@
                       setDropboxConnected(data.connected);
                       if (data.connected) {
                         if (data.expires_at) setDropboxTokenExpiry(data.expires_at);
-                        // 로그인 성공 시 데이터 불러오기
-                        syncFromDropbox(true);
                       }
                     })
                     .catch(() => setDropboxConnected(false));
@@ -945,7 +943,7 @@
 
         const syncToDropbox = async () => {
           if (!dropboxConnected) {
-            connectDropbox();
+            alert('Dropbox에 연결되지 않았습니다.');
             return;
           }
           setDropboxSyncing(true);
@@ -1013,7 +1011,7 @@
 
         const syncFromDropbox = async (silent = false) => {
           if (!dropboxConnected) {
-            connectDropbox();
+            if (!silent) connectDropbox();
             return;
           }
           setDropboxSyncing(true);
