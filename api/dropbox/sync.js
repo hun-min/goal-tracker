@@ -5,9 +5,22 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  const token = req.cookies?.dropbox_token;
-  if (!token) {
+  const tokenCookie = req.cookies?.dropbox_token;
+  if (!tokenCookie) {
     return res.status(401).json({ error: 'Dropbox not connected' });
+  }
+  
+  let token;
+  try {
+    const tokenData = JSON.parse(tokenCookie);
+    token = tokenData.access_token;
+  } catch (e) {
+    // Fallback for old string format
+    token = tokenCookie;
+  }
+  
+  if (!token) {
+    return res.status(401).json({ error: 'Invalid token format' });
   }
 
   const { mode, contents, path } = req.body;

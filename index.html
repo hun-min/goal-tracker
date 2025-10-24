@@ -828,11 +828,21 @@
               });
               if (!res.ok) {
                 if (res.status === 500 || res.status === 401 || res.status === 403) {
-                  // 토큰 만료 시 자동 재연결
+                  // 토큰 만료 시 자동 갱신 시도
+                  try {
+                    const refreshRes = await fetch('/api/dropbox/refresh', { method: 'POST' });
+                    if (refreshRes.ok) {
+                      const refreshData = await refreshRes.json();
+                      if (refreshData.success) {
+                        setDropboxTokenExpiry(refreshData.expires_at);
+                        return; // 갱신 성공, 다음 루프에서 재시도
+                      }
+                    }
+                  } catch (err) {}
+                  // 갱신 실패 시 연결 해제
                   await fetch('/api/dropbox/disconnect');
                   setDropboxConnected(false);
-                  setTimeout(() => connectDropbox(), 2000);
-                  errorCount = 10; // 재연결 시도 중이므로 루프 중단
+                  errorCount = 10;
                   return;
                 }
                 errorCount++;
@@ -864,7 +874,7 @@
             }
           };
           
-          const interval = setInterval(syncIfVisible, 60000);
+          const interval = setInterval(syncIfVisible, 600000); // 10분마다
           const handleVisibilityChange = () => { if (!document.hidden) syncIfVisible(); };
           document.addEventListener('visibilitychange', handleVisibilityChange);
           
