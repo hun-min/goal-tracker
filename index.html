@@ -837,7 +837,13 @@
                 setTimeout(() => {
                   fetch('/api/dropbox/status')
                     .then(r => r.json())
-                    .then(data => setDropboxConnected(data.connected))
+                    .then(data => {
+                      setDropboxConnected(data.connected);
+                      if (data.connected) {
+                        // 로그인 성공 시 데이터 불러오기
+                        syncFromDropbox(true);
+                      }
+                    })
                     .catch(() => setDropboxConnected(false));
                 }, 1000);
               }
