@@ -15,6 +15,12 @@ export default async function handler(req, res) {
     const clientId = process.env.DROPBOX_APP_KEY;
     const clientSecret = process.env.DROPBOX_APP_SECRET;
     
+    console.log('Refresh attempt:', { 
+      hasClientId: !!clientId, 
+      hasClientSecret: !!clientSecret, 
+      hasRefreshToken: !!tokenData.refresh_token 
+    });
+    
     const response = await fetch('https://api.dropboxapi.com/oauth2/token', {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -27,6 +33,8 @@ export default async function handler(req, res) {
     });
     
     const data = await response.json();
+    
+    console.log('Dropbox API response:', { status: response.status, data });
     
     if (data.access_token) {
       // 새로운 토큰 데이터 생성
@@ -47,7 +55,7 @@ export default async function handler(req, res) {
       res.status(400).json({ error: 'Failed to refresh token', details: data });
     }
   } catch (error) {
-    console.error('Refresh token error:', error);
-    res.status(500).json({ error: 'Token refresh failed' });
+    console.error('Refresh token error:', error.message, error.stack);
+    res.status(500).json({ error: 'Token refresh failed', details: error.message });
   }
 }
