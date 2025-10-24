@@ -687,10 +687,6 @@
                                   value={tempMinutes[`goal-${goal.id}`] ?? goal.estimatedMinutes ?? ''}
                                   placeholder="분"
                                   onChange={(e) => setTempMinutes({...tempMinutes, [`goal-${goal.id}`]: e.target.value})}
-                                  onBlur={(e) => {
-                                    const mins = e.target.value ? parseInt(e.target.value) : undefined;
-                                    updateGoal(goal.id, editingText, mins, goal.indent);
-                                  }}
                                   onClick={(e) => e.stopPropagation()}
                                   className="w-12 px-1 py-1 bg-gray-700 text-gray-100 rounded focus:outline-none border-0 text-sm"
                                 />
@@ -698,7 +694,9 @@
                                   onClick={(e) => {
                                     e.stopPropagation();
                                     const newIndent = Math.max(0, (goal.indent || 0) - 1);
-                                    updateGoal(goal.id, editingText, goal.estimatedMinutes, newIndent);
+                                    const newGoals = goals.map(g => g.id === goal.id ? {...g, indent: newIndent} : g);
+                                    setGoals(newGoals);
+                                    saveToStorage(newGoals, sections);
                                   }}
                                   className="px-1.5 py-0.5 bg-gray-600 text-white rounded text-xs"
                                 >
@@ -708,7 +706,9 @@
                                   onClick={(e) => {
                                     e.stopPropagation();
                                     const newIndent = Math.min(3, (goal.indent || 0) + 1);
-                                    updateGoal(goal.id, editingText, goal.estimatedMinutes, newIndent);
+                                    const newGoals = goals.map(g => g.id === goal.id ? {...g, indent: newIndent} : g);
+                                    setGoals(newGoals);
+                                    saveToStorage(newGoals, sections);
                                   }}
                                   className="px-1.5 py-0.5 bg-gray-600 text-white rounded text-xs"
                                 >
@@ -960,10 +960,6 @@
                                   value={tempMinutes[`goal-${goal.id}`] ?? goal.estimatedMinutes ?? ''}
                                   placeholder="분"
                                   onChange={(e) => setTempMinutes({...tempMinutes, [`goal-${goal.id}`]: e.target.value})}
-                                  onBlur={(e) => {
-                                    const mins = e.target.value ? parseInt(e.target.value) : undefined;
-                                    updateGoal(goal.id, editingText, mins, goal.indent);
-                                  }}
                                   onClick={(e) => e.stopPropagation()}
                                   className="w-12 px-1 py-1 bg-gray-700 text-gray-100 rounded focus:outline-none border-0 text-sm"
                                 />
@@ -971,7 +967,9 @@
                                   onClick={(e) => {
                                     e.stopPropagation();
                                     const newIndent = Math.max(0, (goal.indent || 0) - 1);
-                                    updateGoal(goal.id, editingText, goal.estimatedMinutes, newIndent);
+                                    const newGoals = goals.map(g => g.id === goal.id ? {...g, indent: newIndent} : g);
+                                    setGoals(newGoals);
+                                    saveToStorage(newGoals, sections);
                                   }}
                                   className="px-1.5 py-0.5 bg-gray-600 text-white rounded text-xs"
                                 >
@@ -981,7 +979,9 @@
                                   onClick={(e) => {
                                     e.stopPropagation();
                                     const newIndent = Math.min(3, (goal.indent || 0) + 1);
-                                    updateGoal(goal.id, editingText, goal.estimatedMinutes, newIndent);
+                                    const newGoals = goals.map(g => g.id === goal.id ? {...g, indent: newIndent} : g);
+                                    setGoals(newGoals);
+                                    saveToStorage(newGoals, sections);
                                   }}
                                   className="px-1.5 py-0.5 bg-gray-600 text-white rounded text-xs"
                                 >
