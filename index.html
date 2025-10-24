@@ -627,11 +627,12 @@
             return;
           }
           
-          // Non-blocking: check connection first
-          fetch('/api/dropbox/status')
-            .then(r => r.json())
-            .then(data => {
-              setDropboxConnected(data.connected);
+          // 매번 새로 연결 상태 확인
+          const checkConnection = () => {
+            fetch('/api/dropbox/status')
+              .then(r => r.json())
+              .then(data => {
+                setDropboxConnected(data.connected);
               
               // Smart sync in background (non-blocking)
               if (data.connected) {
@@ -718,24 +719,38 @@
               } else {
                 dropboxInitializedRef.current = true;
               }
-            })
-            .catch(() => { 
-              dropboxInitializedRef.current = true;
-            });
+              })
+              .catch(() => {
+                setDropboxConnected(false);
+                dropboxInitializedRef.current = true;
+              });
+          };
+          
+          checkConnection();
+          // 5분마다 연결 상태 재확인
+          const statusInterval = setInterval(checkConnection, 300000);
+          
+          return () => clearInterval(statusInterval);
         }, []);
 
         // 1분마다 Dropbox 확인 (화면 켜져있을 때만)
         useEffect(() => {
           if (!dropboxConnected) return;
           
+          let errorCount = 0;
           const syncIfVisible = async () => {
-            if (document.hidden) return;
+            if (document.hidden || errorCount >= 3) return;
             try {
               const res = await fetch('/api/dropbox/sync', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ mode: 'pull' })
               });
+              if (!res.ok) {
+                errorCount++;
+                return;
+              }
+              errorCount = 0; // 성공 시 리셋
               const response = await res.json();
               const dropboxData = response.contents ? JSON.parse(response.contents) : null;
               
@@ -756,7 +771,9 @@
                 setLastDropboxSync(Date.now());
                 setTimeout(() => { dropboxInitializedRef.current = true; }, 100);
               }
-            } catch (err) {}
+            } catch (err) {
+              errorCount++;
+            }
           };
           
           const interval = setInterval(syncIfVisible, 60000);
@@ -777,9 +794,13 @@
             const checkPopup = setInterval(() => {
               if (popup.closed) {
                 clearInterval(checkPopup);
-                fetch('/api/dropbox/status')
-                  .then(r => r.json())
-                  .then(data => setDropboxConnected(data.connected));
+                // 연결 상태 새로 확인
+                setTimeout(() => {
+                  fetch('/api/dropbox/status')
+                    .then(r => r.json())
+                    .then(data => setDropboxConnected(data.connected))
+                    .catch(() => setDropboxConnected(false));
+                }, 1000);
               }
             }, 500);
           } catch (err) {
@@ -793,7 +814,8 @@
             setDropboxConnected(false);
             setShowDropboxMenu(false);
           } catch (err) {
-            alert('연결 해제 실패');
+            setDropboxConnected(false);
+            setShowDropboxMenu(false);
           }
         };
 
@@ -809,15 +831,22 @@
             
             // Upload main file with retry
             let res;
+            let lastError;
             for (let i = 0; i < 3; i++) {
-              res = await fetch('/api/dropbox/sync', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ mode: 'push', contents })
-              });
-              if (res.ok) break;
-              if (i < 2) await new Promise(r => setTimeout(r, 1000));
+              try {
+                res = await fetch('/api/dropbox/sync', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ mode: 'push', contents })
+                });
+                if (res.ok) break;
+                lastError = `HTTP ${res.status}`;
+              } catch (err) {
+                lastError = err.message;
+              }
+              if (i < 2) await new Promise(r => setTimeout(r, 1000 * (i + 1)));
             }
+            if (!res || !res.ok) throw new Error(lastError || 'Upload failed');
             await res.json();
             
             // Create backup with timestamp
@@ -857,15 +886,22 @@
           setDropboxSyncing(true);
           try {
             let res;
+            let lastError;
             for (let i = 0; i < 3; i++) {
-              res = await fetch('/api/dropbox/sync', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ mode: 'pull' })
-              });
-              if (res.ok) break;
-              if (i < 2) await new Promise(r => setTimeout(r, 1000));
+              try {
+                res = await fetch('/api/dropbox/sync', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ mode: 'pull' })
+                });
+                if (res.ok) break;
+                lastError = `HTTP ${res.status}`;
+              } catch (err) {
+                lastError = err.message;
+              }
+              if (i < 2) await new Promise(r => setTimeout(r, 1000 * (i + 1)));
             }
+            if (!res || !res.ok) throw new Error(lastError || 'Download failed');
             const response = await res.json();
             if (response.error) {
               if (!silent) alert(`✗ ${response.message || response.error}`);
