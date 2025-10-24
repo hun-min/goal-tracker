@@ -1,0 +1,14 @@
+할일 드래그 핸들 추가, 타이머 버튼 수정, 모바일 들여쓰기 버튼 추가, 글씨 크기 축소 완료
+
+변경사항:
+1. 드래그 핸들 (⋮⋮) 왼쪽에 추가 - 핸들만 드래그 가능
+2. 타이머 버튼에 onMouseDown preventDefault 추가하여 클릭 시 사라지지 않도록 수정
+3. 모바일에서 들여쓰기 버튼 (← →) 표시
+4. 전체 글씨 크기 축소 (text-lg → text-sm, text-sm → text-xs 등)
+5. 간격 축소 (py-2 → py-1, gap-3 → gap-2 등)
+
+CSS 추가:
+- #compactTodosModal .drag-handle: 드래그 핸들 스타일
+- #compactTodosModal .indent-controls: 모바일 들여쓰기 버튼 (데스크톱에서 숨김)
+
+수정 완료!
