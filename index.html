@@ -235,8 +235,10 @@
           }
           try {
             const existingData = localStorage.getItem(STORAGE_KEY);
-            const savedAt = existingData ? JSON.parse(existingData).savedAt : new Date().toISOString();
-            const payload = JSON.stringify({ goals, savedAt });
+            const parsed = existingData ? JSON.parse(existingData) : {};
+            const savedAt = parsed.savedAt || new Date().toISOString();
+            const sections = parsed.sections || [];
+            const payload = JSON.stringify({ goals, sections, savedAt });
             localStorage.setItem(STORAGE_KEY, payload);
             setLastSavedAt(Date.now());
             setStatusMessage("변경 사항을 자동 저장했습니다.");
