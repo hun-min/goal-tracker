@@ -460,8 +460,8 @@
                       return (
                         <div 
                           key={`goal-${goal.id}`} 
-                          className="flex items-start text-sm md:hover:bg-gray-800/20 rounded px-1 relative cursor-pointer" 
-                          style={{ marginLeft: `${(goal.indent || 0) * 20}px`, minHeight: '32px' }}
+                          className="flex items-center text-sm md:hover:bg-gray-800/20 rounded relative cursor-pointer" 
+                          style={{ paddingLeft: `${(goal.indent || 0) * 20 + 4}px`, minHeight: '32px' }}
                           onClick={(e) => {
                             e.stopPropagation();
                             if (editingTodoId && editingTodoId.startsWith('goal-') && editingTodoId !== `goal-${goal.id}`) {
@@ -501,7 +501,7 @@
                             type="checkbox" 
                             checked={!!goal.completedAt} 
                             onChange={() => toggleGoal(goal.id)} 
-                            className="w-3.5 h-3.5 mr-2 flex-shrink-0 mt-2" 
+                            className="w-3.5 h-3.5 mr-2 flex-shrink-0" 
                             onClick={(e) => e.stopPropagation()}
                           />
                           {isEditingGoal ? (
@@ -509,13 +509,87 @@
                               type="text"
                               value={editingText}
                               onChange={(e) => setEditingText(e.target.value)}
-                              onBlur={() => updateGoal(goal.id, editingText, goal.estimatedMinutes, goal.indent)}
+                              onBlur={() => {
+                                updateGoal(goal.id, editingText, goal.estimatedMinutes, goal.indent);
+                                setEditingTodoId(null);
+                              }}
                               onKeyDown={(e) => {
                                 if (e.key === 'Enter') {
                                   e.preventDefault();
-                                  addGoal(goal.sectionId, goal.id, goal.indent || 0);
+                                  const cursorPos = e.target.selectionStart;
+                                  const beforeText = editingText.substring(0, cursorPos);
+                                  const afterText = editingText.substring(cursorPos);
+                                  const newGoal = {
+                                    id: Date.now(),
+                                    name: afterText,
+                                    totalSeconds: 0,
+                                    logs: [],
+                                    todos: [],
+                                    sectionId: goal.sectionId,
+                                    indent: goal.indent || 0
+                                  };
+                                  const index = goals.findIndex(g => g.id === goal.id);
+                                  const newGoals = [
+                                    ...goals.slice(0, index),
+                                    { ...goal, name: beforeText },
+                                    newGoal,
+                                    ...goals.slice(index + 1)
+                                  ];
+                                  setGoals(newGoals);
+                                  saveToStorage(newGoals, sections);
+                                  setEditingTodoId(`goal-${newGoal.id}`);
+                                  setEditingText(afterText);
                                 } else if (e.key === 'Escape') {
                                   setEditingTodoId(null);
+                                } else if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+                                  e.preventDefault();
+                                  const currentIndex = noSectionGoals.findIndex(g => g.id === goal.id);
+                                  const nextIndex = e.key === 'ArrowUp' ? currentIndex - 1 : currentIndex + 1;
+                                  if (nextIndex >= 0 && nextIndex < noSectionGoals.length) {
+                                    const nextGoal = noSectionGoals[nextIndex];
+                                    updateGoal(goal.id, editingText, goal.estimatedMinutes, goal.indent);
+                                    setEditingTodoId(`goal-${nextGoal.id}`);
+                                    setEditingText(nextGoal.name);
+                                  }
+                                } else if (e.key === 'Tab') {
+                                  e.preventDefault();
+                                  const newIndent = Math.max(0, Math.min(3, (goal.indent || 0) + (e.shiftKey ? -1 : 1)));
+                                  updateGoal(goal.id, editingText, goal.estimatedMinutes, newIndent);
+                                } else if (e.key === 'Backspace' && e.target.selectionStart === 0) {
+                                  e.preventDefault();
+                                  const currentGoalIndex = noSectionGoals.findIndex(g => g.id === goal.id);
+                                  const prevGoal = currentGoalIndex > 0 ? noSectionGoals[currentGoalIndex - 1] : null;
+                                  if (prevGoal) {
+                                    const prevText = prevGoal.name;
+                                    const currentText = editingText;
+                                    const newGoals = goals.map(g => {
+                                      if (g.id === prevGoal.id) {
+                                        return { ...g, name: prevText + currentText };
+                                      }
+                                      return g;
+                                    }).filter(g => g.id !== goal.id);
+                                    setGoals(newGoals);
+                                    saveToStorage(newGoals, sections);
+                                    setEditingTodoId(`goal-${prevGoal.id}`);
+                                    setEditingText(prevText + currentText);
+                                  }
+                                } else if (e.key === 'Delete' && e.target.selectionStart === editingText.length) {
+                                  e.preventDefault();
+                                  const currentGoalIndex = noSectionGoals.findIndex(g => g.id === goal.id);
+                                  const nextGoal = currentGoalIndex < noSectionGoals.length - 1 ? noSectionGoals[currentGoalIndex + 1] : null;
+                                  if (nextGoal) {
+                                    const currentText = editingText;
+                                    const nextText = nextGoal.name;
+                                    const newGoals = goals.map(g => {
+                                      if (g.id === goal.id) {
+                                        return { ...g, name: currentText + nextText };
+                                      }
+                                      return g;
+                                    }).filter(g => g.id !== nextGoal.id);
+                                    setGoals(newGoals);
+                                    saveToStorage(newGoals, sections);
+                                    setEditingText(currentText + nextText);
+                                  }
                                 }
                               }}
                               autoFocus
@@ -524,15 +598,19 @@
                             />
                           ) : (
                             <div className={`flex-1 py-2 font-medium break-words ${goal.completedAt ? 'line-through text-gray-500' : 'text-gray-200'}`}>
-                              {goal.estimatedMinutes && (
-                                <span className="text-blue-400 text-xs mr-1">{goal.estimatedMinutes}분</span>
-                              )}
                               {goal.name}
                             </div>
                           )}
-                          <div className="flex items-center gap-1 mt-2" onClick={(e) => e.stopPropagation()}>
-                            {!isEditingGoal && goal.totalSeconds > 0 && (
-                              <span className="text-gray-400 text-xs font-mono mr-1">{formatTime(goal.totalSeconds)}</span>
+                          <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                            {!isEditingGoal && (
+                              <>
+                                {goal.estimatedMinutes && (
+                                  <span className="text-gray-500 text-xs mr-1">{goal.estimatedMinutes}분</span>
+                                )}
+                                {goal.totalSeconds > 0 && (
+                                  <span className="text-gray-400 text-xs font-mono mr-1">{formatTime(goal.totalSeconds)}</span>
+                                )}
+                              </>
                             )}
                             {isTimerActive && (
                               <>
@@ -657,8 +735,8 @@
                       return (
                         <div 
                           key={`goal-${goal.id}`} 
-                          className="flex items-start text-sm md:hover:bg-gray-800/20 rounded px-1 relative cursor-pointer" 
-                          style={{ marginLeft: `${(goal.indent || 0) * 20}px`, minHeight: '32px' }}
+                          className="flex items-center text-sm md:hover:bg-gray-800/20 rounded relative cursor-pointer" 
+                          style={{ paddingLeft: `${(goal.indent || 0) * 20 + 4}px`, minHeight: '32px' }}
                           onClick={(e) => {
                             e.stopPropagation();
                             if (editingTodoId && editingTodoId.startsWith('goal-') && editingTodoId !== `goal-${goal.id}`) {
@@ -698,7 +776,7 @@
                             type="checkbox" 
                             checked={!!goal.completedAt} 
                             onChange={() => toggleGoal(goal.id)} 
-                            className="w-3.5 h-3.5 mr-2 flex-shrink-0 mt-2" 
+                            className="w-3.5 h-3.5 mr-2 flex-shrink-0" 
                             onClick={(e) => e.stopPropagation()}
                           />
                           {isEditingGoal ? (
@@ -706,13 +784,87 @@
                               type="text"
                               value={editingText}
                               onChange={(e) => setEditingText(e.target.value)}
-                              onBlur={() => updateGoal(goal.id, editingText, goal.estimatedMinutes, goal.indent)}
+                              onBlur={() => {
+                                updateGoal(goal.id, editingText, goal.estimatedMinutes, goal.indent);
+                                setEditingTodoId(null);
+                              }}
                               onKeyDown={(e) => {
                                 if (e.key === 'Enter') {
                                   e.preventDefault();
-                                  addGoal(goal.sectionId, goal.id, goal.indent || 0);
+                                  const cursorPos = e.target.selectionStart;
+                                  const beforeText = editingText.substring(0, cursorPos);
+                                  const afterText = editingText.substring(cursorPos);
+                                  const newGoal = {
+                                    id: Date.now(),
+                                    name: afterText,
+                                    totalSeconds: 0,
+                                    logs: [],
+                                    todos: [],
+                                    sectionId: goal.sectionId,
+                                    indent: goal.indent || 0
+                                  };
+                                  const index = goals.findIndex(g => g.id === goal.id);
+                                  const newGoals = [
+                                    ...goals.slice(0, index),
+                                    { ...goal, name: beforeText },
+                                    newGoal,
+                                    ...goals.slice(index + 1)
+                                  ];
+                                  setGoals(newGoals);
+                                  saveToStorage(newGoals, sections);
+                                  setEditingTodoId(`goal-${newGoal.id}`);
+                                  setEditingText(afterText);
                                 } else if (e.key === 'Escape') {
                                   setEditingTodoId(null);
+                                } else if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+                                  e.preventDefault();
+                                  const currentIndex = sectionGoals.findIndex(g => g.id === goal.id);
+                                  const nextIndex = e.key === 'ArrowUp' ? currentIndex - 1 : currentIndex + 1;
+                                  if (nextIndex >= 0 && nextIndex < sectionGoals.length) {
+                                    const nextGoal = sectionGoals[nextIndex];
+                                    updateGoal(goal.id, editingText, goal.estimatedMinutes, goal.indent);
+                                    setEditingTodoId(`goal-${nextGoal.id}`);
+                                    setEditingText(nextGoal.name);
+                                  }
+                                } else if (e.key === 'Tab') {
+                                  e.preventDefault();
+                                  const newIndent = Math.max(0, Math.min(3, (goal.indent || 0) + (e.shiftKey ? -1 : 1)));
+                                  updateGoal(goal.id, editingText, goal.estimatedMinutes, newIndent);
+                                } else if (e.key === 'Backspace' && e.target.selectionStart === 0) {
+                                  e.preventDefault();
+                                  const currentGoalIndex = sectionGoals.findIndex(g => g.id === goal.id);
+                                  const prevGoal = currentGoalIndex > 0 ? sectionGoals[currentGoalIndex - 1] : null;
+                                  if (prevGoal) {
+                                    const prevText = prevGoal.name;
+                                    const currentText = editingText;
+                                    const newGoals = goals.map(g => {
+                                      if (g.id === prevGoal.id) {
+                                        return { ...g, name: prevText + currentText };
+                                      }
+                                      return g;
+                                    }).filter(g => g.id !== goal.id);
+                                    setGoals(newGoals);
+                                    saveToStorage(newGoals, sections);
+                                    setEditingTodoId(`goal-${prevGoal.id}`);
+                                    setEditingText(prevText + currentText);
+                                  }
+                                } else if (e.key === 'Delete' && e.target.selectionStart === editingText.length) {
+                                  e.preventDefault();
+                                  const currentGoalIndex = sectionGoals.findIndex(g => g.id === goal.id);
+                                  const nextGoal = currentGoalIndex < sectionGoals.length - 1 ? sectionGoals[currentGoalIndex + 1] : null;
+                                  if (nextGoal) {
+                                    const currentText = editingText;
+                                    const nextText = nextGoal.name;
+                                    const newGoals = goals.map(g => {
+                                      if (g.id === goal.id) {
+                                        return { ...g, name: currentText + nextText };
+                                      }
+                                      return g;
+                                    }).filter(g => g.id !== nextGoal.id);
+                                    setGoals(newGoals);
+                                    saveToStorage(newGoals, sections);
+                                    setEditingText(currentText + nextText);
+                                  }
                                 }
                               }}
                               autoFocus
@@ -721,15 +873,19 @@
                             />
                           ) : (
                             <div className={`flex-1 py-2 font-medium break-words ${goal.completedAt ? 'line-through text-gray-500' : 'text-gray-200'}`}>
-                              {goal.estimatedMinutes && (
-                                <span className="text-blue-400 text-xs mr-1">{goal.estimatedMinutes}분</span>
-                              )}
                               {goal.name}
                             </div>
                           )}
-                          <div className="flex items-center gap-1 mt-2" onClick={(e) => e.stopPropagation()}>
-                            {!isEditingGoal && goal.totalSeconds > 0 && (
-                              <span className="text-gray-400 text-xs font-mono mr-1">{formatTime(goal.totalSeconds)}</span>
+                          <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                            {!isEditingGoal && (
+                              <>
+                                {goal.estimatedMinutes && (
+                                  <span className="text-gray-500 text-xs mr-1">{goal.estimatedMinutes}분</span>
+                                )}
+                                {goal.totalSeconds > 0 && (
+                                  <span className="text-gray-400 text-xs font-mono mr-1">{formatTime(goal.totalSeconds)}</span>
+                                )}
+                              </>
                             )}
                             {isTimerActive && (
                               <>
