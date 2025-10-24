@@ -628,7 +628,12 @@
           }
           
           // 매번 새로 연결 상태 확인 및 자동 연결
-          const checkConnection = () => {
+          const checkConnection = async () => {
+            // 아예 처음부터 새로 로그인
+            await fetch('/api/dropbox/disconnect');
+            connectDropbox();
+            return;
+            
             fetch('/api/dropbox/status')
               .then(r => r.json())
               .then(data => {
