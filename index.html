@@ -807,12 +807,17 @@
             const payload = { goals, lists, selectedListId, togglApiToken, savedAt: new Date().toISOString() };
             const contents = JSON.stringify(payload);
             
-            // Upload main file
-            const res = await fetch('/api/dropbox/sync', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ mode: 'push', contents })
-            });
+            // Upload main file with retry
+            let res;
+            for (let i = 0; i < 3; i++) {
+              res = await fetch('/api/dropbox/sync', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ mode: 'push', contents })
+              });
+              if (res.ok) break;
+              if (i < 2) await new Promise(r => setTimeout(r, 1000));
+            }
             await res.json();
             
             // Create backup with timestamp
@@ -851,11 +856,16 @@
           }
           setDropboxSyncing(true);
           try {
-            const res = await fetch('/api/dropbox/sync', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ mode: 'pull' })
-            });
+            let res;
+            for (let i = 0; i < 3; i++) {
+              res = await fetch('/api/dropbox/sync', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ mode: 'pull' })
+              });
+              if (res.ok) break;
+              if (i < 2) await new Promise(r => setTimeout(r, 1000));
+            }
             const response = await res.json();
             if (response.error) {
               if (!silent) alert(`✗ ${response.message || response.error}`);
