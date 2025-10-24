@@ -241,19 +241,77 @@
         }
       };
 
-      const startTimer = (goalId, todoText = "") => {
+      const startTimer = async (goalId, todoText = "") => {
         const now = Date.now();
+        const goal = goals.find(g => g.id === goalId);
+        
+        const currentSeconds = goal?.totalSeconds || 0;
+        const currentH = Math.floor(currentSeconds / 3600);
+        const currentM = Math.floor((currentSeconds % 3600) / 60);
+        const currentStr = currentH > 0 ? `${currentH}시간 ${currentM}분` : `${currentM}분`;
+        
+        const targetSeconds = (goal?.estimatedMinutes || 0) * 60;
+        const targetH = Math.floor(targetSeconds / 3600);
+        const targetM = Math.floor((targetSeconds % 3600) / 60);
+        const targetStr = targetH > 0 ? `${targetH}시간 ${targetM}분` : `${targetM}분`;
+        
+        const progress = targetSeconds > 0 ? Math.min((currentSeconds / targetSeconds) * 100, 100).toFixed(0) : 0;
+        
+        let description = todoText ? `${goal?.name} - ${todoText}` : (goal?.name || 'Goal Tracker');
+        const togglFormat = localStorage.getItem('toggl_format') || '';
+        if (togglFormat) {
+          const formatted = togglFormat
+            .replace('{current}', currentStr)
+            .replace('{target}', targetStr)
+            .replace('{progress}', progress);
+          description += ` ${formatted}`;
+        }
+        
+        const togglApiToken = localStorage.getItem('toggl_api_token') || '';
+        let entryId = null;
+        if (togglApiToken) {
+          try {
+            const response = await fetch('/api/toggl/start', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ apiToken: togglApiToken, description, projectName: null })
+            });
+            if (response.ok) {
+              const data = await response.json();
+              entryId = data.entryId;
+            }
+          } catch (err) {}
+        }
+        
         setActiveTimer(goalId);
         setTimerSeconds(0);
         setTimerStartTime(now);
         setTimerMemo(todoText);
         localStorage.setItem('timer-state', JSON.stringify({
           activeTimer: goalId,
-          timerStartTime: now
+          timerStartTime: now,
+          togglEntryId: entryId
         }));
       };
 
-      const stopTimer = (goalId) => {
+      const stopTimer = async (goalId) => {
+        const saved = localStorage.getItem('timer-state');
+        if (saved) {
+          const { togglEntryId } = JSON.parse(saved);
+          if (togglEntryId) {
+            const togglApiToken = localStorage.getItem('toggl_api_token') || '';
+            if (togglApiToken) {
+              try {
+                await fetch('/api/toggl/stop', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ apiToken: togglApiToken, entryId: togglEntryId })
+                });
+              } catch (err) {}
+            }
+          }
+        }
+        
         if (activeTimer === goalId && timerSeconds > 0) {
           const endTime = new Date();
           const startTime = new Date(timerStartTime);
