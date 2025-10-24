@@ -630,9 +630,14 @@
           // 매번 새로 연결 상태 확인 및 자동 연결
           const checkConnection = async () => {
             // 아예 처음부터 새로 로그인
-            await fetch('/api/dropbox/disconnect');
-            connectDropbox();
-            return;
+            try {
+              await fetch('/api/dropbox/disconnect');
+              await new Promise(r => setTimeout(r, 500));
+              connectDropbox();
+            } catch (e) {
+              connectDropbox();
+            }
+            dropboxInitializedRef.current = true;
             
             fetch('/api/dropbox/status')
               .then(r => r.json())
@@ -821,6 +826,10 @@
             const res = await fetch('/api/dropbox/auth/start');
             const { authUrl } = await res.json();
             const popup = window.open(authUrl, 'dropbox-auth', 'width=600,height=700');
+            if (!popup) {
+              alert('팝업이 차단되었습니다. 팝업을 허용해주세요.');
+              return;
+            }
             const checkPopup = setInterval(() => {
               if (popup.closed) {
                 clearInterval(checkPopup);
