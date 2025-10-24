@@ -627,27 +627,13 @@
             return;
           }
           
-          // 매번 새로 연결 상태 확인 및 자동 연결
+          // 연결 상태만 확인 (자동 연결 안함)
           const checkConnection = async () => {
-            // 아예 처음부터 새로 로그인
-            try {
-              await fetch('/api/dropbox/disconnect');
-              await new Promise(r => setTimeout(r, 500));
-              connectDropbox();
-            } catch (e) {
-              connectDropbox();
-            }
-            dropboxInitializedRef.current = true;
-            
             fetch('/api/dropbox/status')
               .then(r => r.json())
               .then(data => {
-                if (!data.connected) {
-                  // 연결 안되어 있으면 자동 연결 시도
-                  connectDropbox();
-                } else {
-                  setDropboxConnected(true);
-                }
+                setDropboxConnected(data.connected);
+                dropboxInitializedRef.current = true;
               
               // Smart sync in background (non-blocking)
               if (data.connected) {
