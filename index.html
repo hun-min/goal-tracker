@@ -627,12 +627,17 @@
             return;
           }
           
-          // 매번 새로 연결 상태 확인
+          // 매번 새로 연결 상태 확인 및 자동 연결
           const checkConnection = () => {
             fetch('/api/dropbox/status')
               .then(r => r.json())
               .then(data => {
-                setDropboxConnected(data.connected);
+                if (!data.connected) {
+                  // 연결 안되어 있으면 자동 연결 시도
+                  connectDropbox();
+                } else {
+                  setDropboxConnected(true);
+                }
               
               // Smart sync in background (non-blocking)
               if (data.connected) {
@@ -672,41 +677,53 @@
                       }
                       setLastDropboxSync(Date.now());
                     } else if (!dropboxHasData && localHasData) {
-                      // Dropbox가 비어있고 로컬에 데이터가 있으면 업로드
+                      // Dropbox가 비어있고 로컬에 데이터가 있으면 업로드 (서버 오류 시 스킵)
                       console.log('[INIT] Uploading local to Dropbox (Dropbox empty)');
-                      const localListsData = localStorage.getItem(LISTS_STORAGE_KEY);
-                      const localListsParsed = localListsData ? JSON.parse(localListsData) : {};
-                      const payload = { 
-                        goals: localParsed.goals, 
-                        lists: localListsParsed.lists || [], 
-                        selectedListId: localListsParsed.selectedListId,
-                        togglApiToken: localListsParsed.togglApiToken || '',
-                        savedAt: new Date().toISOString()
-                      };
-                      await fetch('/api/dropbox/sync', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ mode: 'push', contents: JSON.stringify(payload) })
-                      });
-                      setLastDropboxSync(Date.now());
+                      try {
+                        const localListsData = localStorage.getItem(LISTS_STORAGE_KEY);
+                        const localListsParsed = localListsData ? JSON.parse(localListsData) : {};
+                        const payload = { 
+                          goals: localParsed.goals, 
+                          lists: localListsParsed.lists || [], 
+                          selectedListId: localListsParsed.selectedListId,
+                          togglApiToken: localListsParsed.togglApiToken || '',
+                          savedAt: new Date().toISOString()
+                        };
+                        const uploadRes = await fetch('/api/dropbox/sync', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ mode: 'push', contents: JSON.stringify(payload) })
+                        });
+                        if (uploadRes.ok) {
+                          setLastDropboxSync(Date.now());
+                        }
+                      } catch (err) {
+                        console.log('[INIT] Upload failed, skipping');
+                      }
                     } else if (localTime > dropboxTime && localHasData) {
-                      // 로컬이 최신이고 데이터가 있으면 업로드
+                      // 로컬이 최신이고 데이터가 있으면 업로드 (서버 오류 시 스킵)
                       console.log('[INIT] Uploading local to Dropbox (local newer)');
-                      const localListsData = localStorage.getItem(LISTS_STORAGE_KEY);
-                      const localListsParsed = localListsData ? JSON.parse(localListsData) : {};
-                      const payload = { 
-                        goals: localParsed.goals, 
-                        lists: localListsParsed.lists || [], 
-                        selectedListId: localListsParsed.selectedListId,
-                        togglApiToken: localListsParsed.togglApiToken || '',
-                        savedAt: localParsed.savedAt
-                      };
-                      await fetch('/api/dropbox/sync', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ mode: 'push', contents: JSON.stringify(payload) })
-                      });
-                      setLastDropboxSync(Date.now());
+                      try {
+                        const localListsData = localStorage.getItem(LISTS_STORAGE_KEY);
+                        const localListsParsed = localListsData ? JSON.parse(localListsData) : {};
+                        const payload = { 
+                          goals: localParsed.goals, 
+                          lists: localListsParsed.lists || [], 
+                          selectedListId: localListsParsed.selectedListId,
+                          togglApiToken: localListsParsed.togglApiToken || '',
+                          savedAt: localParsed.savedAt
+                        };
+                        const uploadRes = await fetch('/api/dropbox/sync', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ mode: 'push', contents: JSON.stringify(payload) })
+                        });
+                        if (uploadRes.ok) {
+                          setLastDropboxSync(Date.now());
+                        }
+                      } catch (err) {
+                        console.log('[INIT] Upload failed, skipping');
+                      }
                     }
                   } catch (err) {
                     console.error('Smart sync failed:', err);
@@ -747,6 +764,14 @@
                 body: JSON.stringify({ mode: 'pull' })
               });
               if (!res.ok) {
+                if (res.status === 500 || res.status === 401 || res.status === 403) {
+                  // 토큰 만료 시 자동 재연결
+                  await fetch('/api/dropbox/disconnect');
+                  setDropboxConnected(false);
+                  setTimeout(() => connectDropbox(), 2000);
+                  errorCount = 10; // 재연결 시도 중이므로 루프 중단
+                  return;
+                }
                 errorCount++;
                 return;
               }
@@ -841,12 +866,21 @@
                 });
                 if (res.ok) break;
                 lastError = `HTTP ${res.status}`;
+                if (res.status === 500 || res.status === 401 || res.status === 403) {
+                  // 토큰 만료 시 자동 재연결
+                  await fetch('/api/dropbox/disconnect');
+                  setDropboxConnected(false);
+                  setTimeout(() => connectDropbox(), 1000);
+                  throw new Error('토큰 만료 - 자동 재연결 중');
+                }
               } catch (err) {
                 lastError = err.message;
               }
               if (i < 2) await new Promise(r => setTimeout(r, 1000 * (i + 1)));
             }
-            if (!res || !res.ok) throw new Error(lastError || 'Upload failed');
+            if (!res || !res.ok) {
+              throw new Error(lastError || 'Upload failed');
+            }
             await res.json();
             
             // Create backup with timestamp
@@ -896,12 +930,21 @@
                 });
                 if (res.ok) break;
                 lastError = `HTTP ${res.status}`;
+                if (res.status === 500 || res.status === 401 || res.status === 403) {
+                  // 토큰 만료 시 자동 재연결
+                  await fetch('/api/dropbox/disconnect');
+                  setDropboxConnected(false);
+                  if (!silent) setTimeout(() => connectDropbox(), 1000);
+                  throw new Error('토큰 만료 - 자동 재연결 중');
+                }
               } catch (err) {
                 lastError = err.message;
               }
               if (i < 2) await new Promise(r => setTimeout(r, 1000 * (i + 1)));
             }
-            if (!res || !res.ok) throw new Error(lastError || 'Download failed');
+            if (!res || !res.ok) {
+              throw new Error(lastError || 'Download failed');
+            }
             const response = await res.json();
             if (response.error) {
               if (!silent) alert(`✗ ${response.message || response.error}`);
