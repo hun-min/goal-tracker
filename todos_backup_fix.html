@@ -566,11 +566,11 @@
                           {isEditingGoal ? (
                             <input
                               type="text"
-                              inputMode="text"
                               value={editingText}
                               onChange={(e) => setEditingText(e.target.value)}
                               onBlur={() => {
                                 updateGoal(goal.id, editingText, goal.estimatedMinutes, goal.indent);
+                                setEditingTodoId(null);
                               }}
                               onKeyDown={(e) => {
                                 if (e.key === 'Enter') {
@@ -683,7 +683,6 @@
                               <>
                                 <input
                                   type="number"
-                                  inputMode="numeric"
                                   value={tempMinutes[`goal-${goal.id}`] ?? goal.estimatedMinutes ?? ''}
                                   placeholder="분"
                                   onChange={(e) => setTempMinutes({...tempMinutes, [`goal-${goal.id}`]: e.target.value})}
@@ -691,26 +690,29 @@
                                     const mins = e.target.value ? parseInt(e.target.value) : undefined;
                                     updateGoal(goal.id, editingText, mins, goal.indent);
                                   }}
-                                  onClick={(e) => e.stopPropagation()}
-                                  className="w-12 px-1 py-1 bg-gray-700 text-gray-100 rounded focus:outline-none border-0 text-sm"
+                                  onMouseDown={(e) => e.stopPropagation()}
+                                  onTouchStart={(e) => e.stopPropagation()}
+                                  className="w-16 px-1 py-1 bg-gray-700 text-gray-100 rounded focus:outline-none border-0 text-sm"
                                 />
                                 <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
+                                  onMouseDown={(e) => e.stopPropagation()}
+                                  onTouchStart={(e) => e.stopPropagation()}
+                                  onClick={() => {
                                     const newIndent = Math.max(0, (goal.indent || 0) - 1);
                                     updateGoal(goal.id, editingText, goal.estimatedMinutes, newIndent);
                                   }}
-                                  className="px-1.5 py-0.5 bg-gray-600 text-white rounded text-xs"
+                                  className="px-2 py-0.5 bg-gray-600 text-white rounded text-xs"
                                 >
                                   {'<'}
                                 </button>
                                 <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
+                                  onMouseDown={(e) => e.stopPropagation()}
+                                  onTouchStart={(e) => e.stopPropagation()}
+                                  onClick={() => {
                                     const newIndent = Math.min(3, (goal.indent || 0) + 1);
                                     updateGoal(goal.id, editingText, goal.estimatedMinutes, newIndent);
                                   }}
-                                  className="px-1.5 py-0.5 bg-gray-600 text-white rounded text-xs"
+                                  className="px-2 py-0.5 bg-gray-600 text-white rounded text-xs"
                                 >
                                   {'>'}
                                 </button>
@@ -839,11 +841,11 @@
                           {isEditingGoal ? (
                             <input
                               type="text"
-                              inputMode="text"
                               value={editingText}
                               onChange={(e) => setEditingText(e.target.value)}
                               onBlur={() => {
                                 updateGoal(goal.id, editingText, goal.estimatedMinutes, goal.indent);
+                                setEditingTodoId(null);
                               }}
                               onKeyDown={(e) => {
                                 if (e.key === 'Enter') {
@@ -956,7 +958,6 @@
                               <>
                                 <input
                                   type="number"
-                                  inputMode="numeric"
                                   value={tempMinutes[`goal-${goal.id}`] ?? goal.estimatedMinutes ?? ''}
                                   placeholder="분"
                                   onChange={(e) => setTempMinutes({...tempMinutes, [`goal-${goal.id}`]: e.target.value})}
@@ -964,26 +965,29 @@
                                     const mins = e.target.value ? parseInt(e.target.value) : undefined;
                                     updateGoal(goal.id, editingText, mins, goal.indent);
                                   }}
-                                  onClick={(e) => e.stopPropagation()}
-                                  className="w-12 px-1 py-1 bg-gray-700 text-gray-100 rounded focus:outline-none border-0 text-sm"
+                                  onMouseDown={(e) => e.stopPropagation()}
+                                  onTouchStart={(e) => e.stopPropagation()}
+                                  className="w-16 px-1 py-1 bg-gray-700 text-gray-100 rounded focus:outline-none border-0 text-sm"
                                 />
                                 <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
+                                  onMouseDown={(e) => e.stopPropagation()}
+                                  onTouchStart={(e) => e.stopPropagation()}
+                                  onClick={() => {
                                     const newIndent = Math.max(0, (goal.indent || 0) - 1);
                                     updateGoal(goal.id, editingText, goal.estimatedMinutes, newIndent);
                                   }}
-                                  className="px-1.5 py-0.5 bg-gray-600 text-white rounded text-xs"
+                                  className="px-2 py-0.5 bg-gray-600 text-white rounded text-xs"
                                 >
                                   {'<'}
                                 </button>
                                 <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
+                                  onMouseDown={(e) => e.stopPropagation()}
+                                  onTouchStart={(e) => e.stopPropagation()}
+                                  onClick={() => {
                                     const newIndent = Math.min(3, (goal.indent || 0) + 1);
                                     updateGoal(goal.id, editingText, goal.estimatedMinutes, newIndent);
                                   }}
-                                  className="px-1.5 py-0.5 bg-gray-600 text-white rounded text-xs"
+                                  className="px-2 py-0.5 bg-gray-600 text-white rounded text-xs"
                                 >
                                   {'>'}
                                 </button>
