@@ -7,7 +7,7 @@ export default async function handler(req, res) {
 
   const clientId = process.env.DROPBOX_APP_KEY;
   const clientSecret = process.env.DROPBOX_APP_SECRET;
-  const redirectUri = 'https://targeted-time.vercel.app/api/dropbox/callback';
+  const redirectUri = `${req.headers['x-forwarded-proto'] || 'https'}://${req.headers.host}/api/dropbox/callback`;
 
   try {
     const response = await fetch('https://api.dropboxapi.com/oauth2/token', {
