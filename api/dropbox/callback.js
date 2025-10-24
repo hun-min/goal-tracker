@@ -28,7 +28,8 @@ export default async function handler(req, res) {
       res.setHeader('Set-Cookie', `dropbox_token=${data.access_token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=31536000`);
       res.send('<script>window.close()</script>');
     } else {
-      res.status(400).send('Failed to get access token');
+      console.error('Dropbox token error:', data);
+      res.status(400).send(`Failed to get access token: ${JSON.stringify(data)}`);
     }
   } catch (error) {
     res.status(500).send('Authentication failed');
