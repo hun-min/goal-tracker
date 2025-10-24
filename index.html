@@ -526,6 +526,8 @@
         const [dropboxSyncing, setDropboxSyncing] = useState(false);
         const [showDropboxMenu, setShowDropboxMenu] = useState(false);
         const [lastDropboxSync, setLastDropboxSync] = useState(null);
+        const [dropboxTokenExpiry, setDropboxTokenExpiry] = useState(null);
+        const [showTokenExpiry, setShowTokenExpiry] = useState(false);
         const lastUploadHashRef = useRef(null);
         const [selectedCardIndex, setSelectedCardIndex] = useState(0);
         const [selectedFieldIndex, setSelectedFieldIndex] = useState(-1);
@@ -633,7 +635,72 @@
               .then(r => r.json())
               .then(data => {
                 setDropboxConnected(data.connected);
-                dropboxInitializedRef.current = true;
+                
+                if (data.connected && data.expires_at) {
+                  setDropboxTokenExpiry(data.expires_at);
+                  
+                  // 토큰이 곧 만료되면 알림 표시
+                  if (data.expires_soon) {
+                    setShowTokenExpiry(true);
+                  }
+                }
+                
+                // 연결되어 있으면 자동 동기화
+                if (data.connected) {
+                  setTimeout(async () => {
+                    try {
+                      const res = await fetch('/api/dropbox/sync', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ mode: 'pull' })
+                      });
+                      const response = await res.json();
+                      const dropboxData = response.contents ? JSON.parse(response.contents) : null;
+                      
+                      const localData = localStorage.getItem(STORAGE_KEY);
+                      const localParsed = localData ? JSON.parse(localData) : null;
+                      const localTime = localParsed?.savedAt ? new Date(localParsed.savedAt).getTime() : 0;
+                      const dropboxTime = dropboxData?.savedAt ? new Date(dropboxData.savedAt).getTime() : 0;
+                      
+                      const dropboxHasData = dropboxData?.goals && dropboxData.goals.length > 0;
+                      const localHasData = localParsed?.goals && localParsed.goals.length > 0;
+                      
+                      if (dropboxHasData && dropboxTime >= localTime) {
+                        dropboxInitializedRef.current = false;
+                        setGoals(dropboxData.goals);
+                        if (dropboxData.lists) setLists(dropboxData.lists);
+                        if (dropboxData.selectedListId) setSelectedListId(dropboxData.selectedListId);
+                        if (dropboxData.togglApiToken) {
+                          TogglIntegration.setApiToken(dropboxData.togglApiToken);
+                          setTogglApiToken(dropboxData.togglApiToken);
+                        }
+                        setLastDropboxSync(Date.now());
+                        setTimeout(() => { dropboxInitializedRef.current = true; }, 100);
+                      } else if (!dropboxHasData && localHasData) {
+                        const localListsData = localStorage.getItem(LISTS_STORAGE_KEY);
+                        const localListsParsed = localListsData ? JSON.parse(localListsData) : {};
+                        const payload = { 
+                          goals: localParsed.goals, 
+                          lists: localListsParsed.lists || [], 
+                          selectedListId: localListsParsed.selectedListId,
+                          togglApiToken: localListsParsed.togglApiToken || '',
+                          savedAt: new Date().toISOString()
+                        };
+                        await fetch('/api/dropbox/sync', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ mode: 'push', contents: JSON.stringify(payload) })
+                        });
+                        setLastDropboxSync(Date.now());
+                      }
+                    } catch (err) {}
+                    finally {
+                      dropboxInitializedRef.current = true;
+                    }
+                  }, 100);
+                } else {
+                  dropboxInitializedRef.current = true;
+                }
               
               // Smart sync in background (non-blocking)
               if (data.connected) {
@@ -807,6 +874,27 @@
           };
         }, [dropboxConnected]);
 
+        const refreshDropboxToken = async () => {
+          try {
+            const res = await fetch('/api/dropbox/refresh', { method: 'POST' });
+            const data = await res.json();
+            
+            if (data.success) {
+              setDropboxTokenExpiry(data.expires_at);
+              setShowTokenExpiry(false);
+              alert('✓ 토큰이 갱신되었습니다');
+              return true;
+            } else {
+              throw new Error(data.error || '토큰 갱신 실패');
+            }
+          } catch (err) {
+            console.error('Token refresh failed:', err);
+            alert('토큰 갱신 실패. 다시 로그인해주세요.');
+            await disconnectDropbox();
+            return false;
+          }
+        };
+
         const connectDropbox = async () => {
           try {
             const res = await fetch('/api/dropbox/auth/start');
@@ -826,6 +914,7 @@
                     .then(data => {
                       setDropboxConnected(data.connected);
                       if (data.connected) {
+                        if (data.expires_at) setDropboxTokenExpiry(data.expires_at);
                         // 로그인 성공 시 데이터 불러오기
                         syncFromDropbox(true);
                       }
@@ -843,9 +932,13 @@
           try {
             await fetch('/api/dropbox/disconnect');
             setDropboxConnected(false);
+            setDropboxTokenExpiry(null);
+            setShowTokenExpiry(false);
             setShowDropboxMenu(false);
           } catch (err) {
             setDropboxConnected(false);
+            setDropboxTokenExpiry(null);
+            setShowTokenExpiry(false);
             setShowDropboxMenu(false);
           }
         };
@@ -2624,6 +2717,38 @@ localStorage.removeItem('timer-state');
                 {persistence.statusMessage}
               </div>
             )}
+            
+            {showTokenExpiry && dropboxTokenExpiry && (
+              <div className="fixed top-16 left-1/2 transform -translate-x-1/2 z-50 bg-gradient-to-r from-orange-500 to-red-500 text-white px-4 py-3 rounded-lg shadow-lg max-w-sm mx-auto">
+                <div className="flex items-center justify-between gap-2">
+                  <div>
+                    <p className="text-sm font-semibold">⚠️ 토큰 만료 예정</p>
+                    <p className="text-xs mt-1">
+                      {(() => {
+                        const timeLeft = dropboxTokenExpiry - Date.now();
+                        const hours = Math.floor(timeLeft / (1000 * 60 * 60));
+                        const minutes = Math.floor((timeLeft % (1000 * 60 * 60)) / (1000 * 60));
+                        return hours > 0 ? `${hours}시간 ${minutes}분 후 만료` : `${minutes}분 후 만료`;
+                      })()} - 갱신하시겠어요?
+                    </p>
+                  </div>
+                  <div className="flex gap-1">
+                    <button 
+                      onClick={refreshDropboxToken}
+                      className="px-2 py-1 bg-white/20 hover:bg-white/30 rounded text-xs"
+                    >
+                      갱신
+                    </button>
+                    <button 
+                      onClick={() => setShowTokenExpiry(false)} 
+                      className="text-white/80 hover:text-white text-xs"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
 
             {showTogglSettings && (
               <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4" onClick={() => setShowTogglSettings(false)}>
@@ -2824,6 +2949,7 @@ localStorage.removeItem('timer-state');
                                 <>
                                   <button onClick={syncToDropbox} disabled={dropboxSyncing} className="w-full px-2 py-1 text-left text-[11px] text-gray-200 hover:bg-gray-800 disabled:opacity-50">{dropboxSyncing ? '⏳' : '↑'}</button>
                                   <button onClick={syncFromDropbox} disabled={dropboxSyncing} className="w-full px-2 py-1 text-left text-[11px] text-gray-200 hover:bg-gray-800 disabled:opacity-50">{dropboxSyncing ? '⏳' : '↓'}</button>
+                                  <button onClick={refreshDropboxToken} className="w-full px-2 py-1 text-left text-[11px] text-blue-400 hover:bg-gray-800">토큰 갱신</button>
                                   <button onClick={disconnectDropbox} className="w-full px-2 py-1 text-left text-[11px] text-red-400 hover:bg-gray-800">해제</button>
                                 </>
                               )}
@@ -2922,6 +3048,7 @@ localStorage.removeItem('timer-state');
                                 <>
                                   <button onClick={syncToDropbox} disabled={dropboxSyncing} className="w-full px-2 py-1 text-left text-[11px] text-gray-200 hover:bg-gray-800 disabled:opacity-50">{dropboxSyncing ? '⏳' : '↑'}</button>
                                   <button onClick={syncFromDropbox} disabled={dropboxSyncing} className="w-full px-2 py-1 text-left text-[11px] text-gray-200 hover:bg-gray-800 disabled:opacity-50">{dropboxSyncing ? '⏳' : '↓'}</button>
+                                  <button onClick={refreshDropboxToken} className="w-full px-2 py-1 text-left text-[11px] text-blue-400 hover:bg-gray-800">토큰 갱신</button>
                                   <button onClick={disconnectDropbox} className="w-full px-2 py-1 text-left text-[11px] text-red-400 hover:bg-gray-800">해제</button>
                                 </>
                               )}
