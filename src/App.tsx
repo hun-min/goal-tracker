@@ -407,36 +407,108 @@ export default function App() {
     });
   const breadcrumbs = getBreadcrumbs();
 
-  // Day Cycle Calculation
+  // Day Cycle & Timeline Calculation
   const nowObj = new Date(now);
   const startOfDay = new Date(nowObj.getFullYear(), nowObj.getMonth(), nowObj.getDate()).getTime();
+  const endOfDay = startOfDay + 86400000;
   const secondsPassed = Math.floor((now - startOfDay) / 1000);
-  const dayPercent = (secondsPassed / 86400) * 100;
-  const remainingPercent = 100 - dayPercent;
+  const dayPercent = (now - startOfDay) / 864000;
   const secondsLeft = 86400 - secondsPassed;
+
+  let todayFocusSeconds = 0;
+  const todaySessions: { startPercent: number; widthPercent: number; color: string }[] = [];
+
+  goals.forEach(goal => {
+    if (goal.history) {
+      goal.history.forEach(session => {
+        if (session.endTime > startOfDay && session.startTime < endOfDay) {
+          const sTime = Math.max(session.startTime, startOfDay);
+          const eTime = Math.min(session.endTime, endOfDay);
+          const duration = Math.floor((eTime - sTime) / 1000);
+          todayFocusSeconds += duration;
+
+          todaySessions.push({
+            startPercent: ((sTime - startOfDay) / 86400000) * 100,
+            widthPercent: ((eTime - sTime) / 86400000) * 100,
+            color: goal.color
+          });
+        }
+      });
+    }
+  });
+
+  if (activeGoalId && sessionStartTime) {
+    const activeGoal = goals.find(g => g.id === activeGoalId);
+    if (now > startOfDay && sessionStartTime < endOfDay) {
+      const sTime = Math.max(sessionStartTime, startOfDay);
+      const eTime = Math.min(now, endOfDay);
+      const duration = Math.floor((eTime - sTime) / 1000);
+      todayFocusSeconds += duration;
+
+      todaySessions.push({
+        startPercent: ((sTime - startOfDay) / 86400000) * 100,
+        widthPercent: ((eTime - sTime) / 86400000) * 100,
+        color: activeGoal?.color || '#00E5FF'
+      });
+    }
+  }
 
   return (
     <div className="min-h-screen p-6 md:p-12 max-w-5xl mx-auto flex flex-col gap-8 pb-32">
       
       {/* Day Cycle Progress */}
-      <div className="w-full hardware-card rounded-xl p-4 flex flex-col gap-2 border-t-2 border-t-[#00E5FF]">
+      <div className="w-full hardware-card rounded-xl p-4 flex flex-col gap-4 border-t-2 border-t-[#00E5FF]">
         <div className="flex justify-between items-end">
-          <div className="flex items-center gap-2 text-[#00E5FF]">
-            <Clock size={16} />
-            <span className="font-mono text-xs tracking-widest uppercase font-bold">Day Cycle</span>
+          <div className="flex flex-col gap-1">
+            <div className="flex items-center gap-2 text-[#00E5FF]">
+              <Clock size={16} />
+              <span className="font-mono text-xs tracking-widest uppercase font-bold">Today's Timeline</span>
+            </div>
+            <div className="font-mono text-sm text-white/80 mt-1">
+              <span className="text-white/40 text-xs mr-2">FOCUSED</span>
+              {formatTime(todayFocusSeconds)}
+            </div>
           </div>
-          <div className="font-mono text-sm text-white/80">
-            {formatTime(secondsLeft)} <span className="text-white/40 text-xs">REMAINING</span>
+          <div className="flex flex-col items-end gap-1">
+            <div className="font-mono text-xs text-[#00E5FF] tracking-widest font-bold">
+              {nowObj.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} <span className="text-white/40">NOW</span>
+            </div>
+            <div className="font-mono text-sm text-white/80 mt-1">
+              {formatTime(secondsLeft)} <span className="text-white/40 text-xs">REMAINING</span>
+            </div>
           </div>
         </div>
-        <div className="h-2 w-full bg-black rounded-full overflow-hidden border border-white/10">
+        
+        <div className="relative h-2.5 w-full mt-2">
+          {/* Background & Sessions (Clipped) */}
+          <div className="absolute inset-0 bg-black/80 rounded-full overflow-hidden border border-white/10">
+            {/* 24 Hour Markers */}
+            <div className="absolute inset-0 flex justify-between px-0 pointer-events-none">
+              {[...Array(24)].map((_, i) => (
+                <div key={i} className={`h-full w-px ${i % 6 === 0 ? 'bg-white/20' : 'bg-white/5'}`} />
+              ))}
+            </div>
+
+            {/* Focus Sessions */}
+            {todaySessions.map((session, i) => (
+              <div 
+                key={i}
+                className="absolute top-0 bottom-0 opacity-80"
+                style={{ 
+                  left: `${session.startPercent}%`, 
+                  width: `${Math.max(session.widthPercent, 0.1)}%`,
+                  backgroundColor: session.color,
+                  boxShadow: `0 0 10px ${session.color}`
+                }}
+              />
+            ))}
+          </div>
+
+          {/* Current Time Indicator (Unclipped) */}
           <div 
-            className="h-full bg-[#00E5FF] transition-all duration-1000 ease-linear"
-            style={{ width: `${remainingPercent}%`, boxShadow: '0 0 10px #00E5FF' }}
+            className="absolute -top-2 -bottom-2 w-[1px] bg-[#00E5FF] z-10 shadow-[0_0_10px_#00E5FF,0_0_2px_#00E5FF] transition-all duration-1000 ease-linear"
+            style={{ left: `${dayPercent}%` }}
           />
-        </div>
-        <div className="text-right font-mono text-[10px] text-[#00E5FF]/60 tracking-widest">
-          {remainingPercent.toFixed(1)}% REMAINING
         </div>
       </div>
 
