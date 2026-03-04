@@ -14,4 +14,5 @@ export interface Goal {
   createdAt: number;
   isArchived?: boolean;
   history?: Session[];
+  lastTrackedAt?: number;
 }

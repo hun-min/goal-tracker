@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Play, Square, Plus, Trash2, Clock, Activity, FolderOpen, ChevronRight, Home, CornerLeftUp, Archive, ArchiveRestore, AlertTriangle, Database, X, Copy, Download, History, Edit2, MonitorSmartphone, Cloud, CloudOff, CloudDownload, CloudUpload, RefreshCw } from 'lucide-react';
+import { Play, Square, Plus, Trash2, Clock, Activity, FolderOpen, ChevronRight, Home, CornerLeftUp, Archive, ArchiveRestore, AlertTriangle, Database, X, Copy, Download, History, Edit2, MonitorSmartphone, Cloud, CloudOff, CloudDownload, CloudUpload, RefreshCw, Layers } from 'lucide-react';
 import { Goal } from './types';
+import { db } from './firebase';
+import { doc, getDoc, setDoc } from 'firebase/firestore';
 
 const COLORS = ['#00FF00', '#00E5FF', '#FF00FF', '#FFAA00', '#FF4444'];
 
@@ -18,11 +20,16 @@ export default function App() {
   const [showArchived, setShowArchived] = useState(false);
   const [goalToDelete, setGoalToDelete] = useState<string | null>(null);
   const [showSyncModal, setShowSyncModal] = useState(false);
+  const [showOverviewModal, setShowOverviewModal] = useState(false);
   const [historyGoalId, setHistoryGoalId] = useState<string | null>(null);
   const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
   const [editStartTime, setEditStartTime] = useState<string>('');
   const [editEndTime, setEditEndTime] = useState<string>('');
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
+
+  // Goal Editing States
+  const [editingGoalId, setEditingGoalId] = useState<string | null>(null);
+  const [editingGoalName, setEditingGoalName] = useState('');
 
   // Cloud Sync States
   const [syncKey, setSyncKey] = useState<string>('');
@@ -87,26 +94,30 @@ export default function App() {
   useEffect(() => {
     if (isLoaded) {
       localStorage.setItem('chrono-goals', JSON.stringify(goals));
-      if (syncKey && !isPulling.current) {
-        pushToCloud(syncKey, goals);
-      }
-    }
-  }, [goals, isLoaded, syncKey]);
-
-  useEffect(() => {
-    if (isLoaded) {
       if (activeGoalId && sessionStartTime) {
         localStorage.setItem('chrono-active', JSON.stringify({ id: activeGoalId, start: sessionStartTime }));
       } else {
         localStorage.removeItem('chrono-active');
       }
+      if (syncKey && !isPulling.current) {
+        pushToCloud(syncKey, goals, activeGoalId, sessionStartTime);
+      }
     }
-  }, [activeGoalId, sessionStartTime, isLoaded]);
+  }, [goals, activeGoalId, sessionStartTime, isLoaded, syncKey]);
 
-  // Timer tick
+  // Timer tick & Visibility Change (Background optimization)
   useEffect(() => {
     const interval = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(interval);
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        setNow(Date.now());
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
   }, []);
 
   const handleAddGoal = (e: React.FormEvent) => {
@@ -165,6 +176,7 @@ export default function App() {
       setActiveGoalId(id);
       setSessionStartTime(Date.now());
       setNow(Date.now());
+      setGoals(goals.map(g => g.id === id ? { ...g, lastTrackedAt: Date.now() } : g));
     }
   };
 
@@ -178,7 +190,8 @@ export default function App() {
           return { 
             ...g, 
             totalSeconds: g.totalSeconds + elapsed,
-            history: [...(g.history || []), newSession]
+            history: [...(g.history || []), newSession],
+            lastTrackedAt: Date.now()
           };
         }
         return g;
@@ -296,39 +309,102 @@ export default function App() {
   const pullFromCloud = async (key: string) => {
     setIsSyncing(true);
     try {
-      const res = await fetch(`/api/sync/${key}`);
-      const json = await res.json();
-      if (json.success && json.data) {
-        isPulling.current = true;
-        setGoals(json.data);
-        setTimeout(() => isPulling.current = false, 100);
+      const docRef = doc(db, "user_sync", key);
+      const docSnap = await getDoc(docRef);
+      
+      if (docSnap.exists()) {
+        const json = docSnap.data();
+        if (json.data) {
+          isPulling.current = true;
+          if (Array.isArray(json.data)) {
+            setGoals(json.data);
+          } else {
+            setGoals(json.data.goals || []);
+            setActiveGoalId(json.data.activeGoalId || null);
+            setSessionStartTime(json.data.sessionStartTime || null);
+          }
+          setTimeout(() => isPulling.current = false, 100);
+        }
       }
     } catch (e) {
-      console.error("Failed to pull from cloud", e);
+      console.error("Failed to pull from Firebase", e);
+      alert("Firebase sync failed. Please check your Firestore rules.");
     } finally {
       setIsSyncing(false);
     }
   };
 
-  const pushToCloud = async (key: string, data: Goal[]) => {
+  const pushToCloud = async (key: string, data: Goal[], activeId: string | null, startTime: number | null) => {
     setIsSyncing(true);
     try {
-      await fetch(`/api/sync/${key}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ data, updatedAt: Date.now() })
+      const docRef = doc(db, "user_sync", key);
+      await setDoc(docRef, {
+        data: { goals: data, activeGoalId: activeId, sessionStartTime: startTime },
+        updatedAt: Date.now()
       });
     } catch (e) {
-      console.error("Failed to push to cloud", e);
+      console.error("Failed to push to Firebase", e);
     } finally {
       setIsSyncing(false);
     }
+  };
+
+  const startEditingGoal = (goal: Goal) => {
+    setEditingGoalId(goal.id);
+    setEditingGoalName(goal.name);
+  };
+
+  const saveGoalName = (id: string) => {
+    if (editingGoalName.trim()) {
+      setGoals(goals.map(g => g.id === id ? { ...g, name: editingGoalName.trim() } : g));
+    }
+    setEditingGoalId(null);
+  };
+
+  const renderTree = (parentId: string | null, depth: number = 0) => {
+    const children = goals.filter(g => g.parentId === parentId && !g.isArchived);
+    if (children.length === 0) return null;
+    
+    return (
+      <div className="flex flex-col w-full">
+        {children.map(goal => {
+          const hasChildren = goals.some(g => g.parentId === goal.id && !g.isArchived);
+          return (
+            <div key={goal.id} className="flex flex-col w-full">
+              <div 
+                className={`flex items-center justify-between py-2.5 px-3 hover:bg-white/10 cursor-pointer border-l-2 ${depth === 0 ? 'border-[#00E5FF]' : 'border-white/20'} transition-colors group`}
+                style={{ marginLeft: `${depth * 16}px` }}
+                onClick={() => {
+                  setCurrentParentId(hasChildren ? goal.id : goal.parentId);
+                  setShowOverviewModal(false);
+                }}
+              >
+                <div className="flex items-center gap-3">
+                  {hasChildren ? <FolderOpen size={14} className="text-[#00E5FF]" /> : <Activity size={14} className="text-white/40" />}
+                  <span className="text-white/80 font-mono text-sm group-hover:text-white">{goal.name}</span>
+                </div>
+                <span className="text-[#00E5FF] font-mono text-xs">
+                  {formatTime(getAggregateSeconds(goal.id))}
+                </span>
+              </div>
+              {renderTree(goal.id, depth + 1)}
+            </div>
+          );
+        })}
+      </div>
+    );
   };
 
   if (!isLoaded) return null;
 
   const activeGoal = goals.find(g => g.id === activeGoalId);
-  const currentGoals = goals.filter(g => g.parentId === currentParentId && (showArchived ? g.isArchived : !g.isArchived));
+  const currentGoals = goals
+    .filter(g => g.parentId === currentParentId && (showArchived ? g.isArchived : !g.isArchived))
+    .sort((a, b) => {
+      const aTime = a.lastTrackedAt || a.createdAt;
+      const bTime = b.lastTrackedAt || b.createdAt;
+      return bTime - aTime;
+    });
   const breadcrumbs = getBreadcrumbs();
 
   // Day Cycle Calculation
@@ -381,6 +457,13 @@ export default function App() {
                 <span className="hidden sm:inline">INSTALL APP</span>
               </button>
             )}
+            <button 
+              onClick={() => setShowOverviewModal(true)}
+              className="flex items-center gap-2 text-white/50 hover:text-white transition-colors font-mono text-xs border border-white/10 px-3 py-1.5 rounded-lg bg-white/5"
+            >
+              <Layers size={14} />
+              <span className="hidden sm:inline">OVERVIEW</span>
+            </button>
             <button 
               onClick={() => setShowSyncModal(true)}
               className={`flex items-center gap-2 transition-colors font-mono text-xs border px-3 py-1.5 rounded-lg ${
@@ -511,11 +594,31 @@ export default function App() {
 
                 <div className="relative z-10 flex flex-col h-full gap-4">
                   <div className="flex justify-between items-start">
-                    <div>
-                      <h3 className="text-2xl font-bold tracking-tight mb-1 flex items-center gap-2">
-                        {goal.name}
-                        {childCount > 0 && (
-                          <span className="text-[10px] bg-white/10 px-2 py-0.5 rounded-full text-white/60 font-mono">
+                    <div className="flex-1 min-w-0 pr-4">
+                      <h3 className="text-2xl font-bold tracking-tight mb-1 flex items-center gap-2 group">
+                        {editingGoalId === goal.id ? (
+                          <input
+                            autoFocus
+                            type="text"
+                            value={editingGoalName}
+                            onChange={(e) => setEditingGoalName(e.target.value)}
+                            onBlur={() => saveGoalName(goal.id)}
+                            onKeyDown={(e) => e.key === 'Enter' && saveGoalName(goal.id)}
+                            className="bg-black/50 border border-[#00E5FF]/50 rounded px-2 py-1 w-full text-white focus:outline-none text-xl"
+                          />
+                        ) : (
+                          <>
+                            <span className="truncate">{goal.name}</span>
+                            <button 
+                              onClick={(e) => { e.stopPropagation(); startEditingGoal(goal); }}
+                              className="opacity-0 group-hover:opacity-100 transition-opacity text-white/30 hover:text-white p-1 shrink-0"
+                            >
+                              <Edit2 size={14} />
+                            </button>
+                          </>
+                        )}
+                        {childCount > 0 && editingGoalId !== goal.id && (
+                          <span className="text-[10px] bg-white/10 px-2 py-0.5 rounded-full text-white/60 font-mono shrink-0">
                             {childCount} SUB
                           </span>
                         )}
@@ -525,7 +628,7 @@ export default function App() {
                         <span>Created {new Date(goal.createdAt).toLocaleDateString()}</span>
                       </div>
                     </div>
-                    <div className="flex gap-1 -mr-2 -mt-2">
+                    <div className="flex gap-1 -mr-2 -mt-2 shrink-0">
                       <button 
                         onClick={(e) => { e.stopPropagation(); setHistoryGoalId(goal.id); }}
                         className="text-white/20 hover:text-[#00E5FF] transition-colors p-2"
@@ -767,7 +870,7 @@ export default function App() {
                     onClick={() => {
                       localStorage.setItem('chrono-sync-key', syncKeyInput);
                       setSyncKey(syncKeyInput);
-                      pushToCloud(syncKeyInput, goals);
+                      pushToCloud(syncKeyInput, goals, activeGoalId, sessionStartTime);
                       setShowSyncModal(false);
                     }}
                     disabled={!syncKeyInput.trim()}
@@ -885,6 +988,46 @@ export default function App() {
                     No sessions recorded yet.
                   </div>
                 )}
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Overview Modal */}
+      <AnimatePresence>
+        {showOverviewModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm"
+            onClick={() => setShowOverviewModal(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              onClick={(e) => e.stopPropagation()}
+              className="w-full max-w-2xl hardware-card rounded-2xl p-6 md:p-8 flex flex-col gap-6 max-h-[85vh]"
+            >
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3 text-[#00E5FF]">
+                  <Layers size={24} />
+                  <h2 className="text-2xl font-bold tracking-tight">SYSTEM OVERVIEW</h2>
+                </div>
+                <button onClick={() => setShowOverviewModal(false)} className="text-white/50 hover:text-white">
+                  <X size={24} />
+                </button>
+              </div>
+
+              <div className="bg-white/5 border border-white/10 rounded-xl p-4 font-mono text-xs text-white/70 leading-relaxed">
+                <strong className="text-white">Directory Tree:</strong><br/>
+                Click any item to jump directly to its location. Folders are marked with <FolderOpen size={12} className="inline text-[#00E5FF] mx-1" /> and tasks with <Activity size={12} className="inline text-white/40 mx-1" />.
+              </div>
+
+              <div className="overflow-y-auto pr-2 custom-scrollbar flex-1 bg-black/30 border border-white/10 rounded-xl p-4">
+                {renderTree(null, 0)}
               </div>
             </motion.div>
           </motion.div>
