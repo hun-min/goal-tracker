@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Play, Square, Plus, Trash2, Clock, Activity, FolderOpen, ChevronRight, Home, CornerLeftUp, Archive, ArchiveRestore, AlertTriangle, Database, X, Copy, Download, History, Edit2, MonitorSmartphone } from 'lucide-react';
+import { Play, Square, Plus, Trash2, Clock, Activity, FolderOpen, ChevronRight, Home, CornerLeftUp, Archive, ArchiveRestore, AlertTriangle, Database, X, Copy, Download, History, Edit2, MonitorSmartphone, Cloud, CloudOff, CloudDownload, CloudUpload, RefreshCw } from 'lucide-react';
 import { Goal } from './types';
 
 const COLORS = ['#00FF00', '#00E5FF', '#FF00FF', '#FFAA00', '#FF4444'];
@@ -18,12 +18,17 @@ export default function App() {
   const [showArchived, setShowArchived] = useState(false);
   const [goalToDelete, setGoalToDelete] = useState<string | null>(null);
   const [showSyncModal, setShowSyncModal] = useState(false);
-  const [importData, setImportData] = useState('');
   const [historyGoalId, setHistoryGoalId] = useState<string | null>(null);
   const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
   const [editStartTime, setEditStartTime] = useState<string>('');
   const [editEndTime, setEditEndTime] = useState<string>('');
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
+
+  // Cloud Sync States
+  const [syncKey, setSyncKey] = useState<string>('');
+  const [syncKeyInput, setSyncKeyInput] = useState<string>('');
+  const [isSyncing, setIsSyncing] = useState(false);
+  const isPulling = React.useRef(false);
 
   // PWA Install Prompt
   useEffect(() => {
@@ -44,7 +49,7 @@ export default function App() {
     }
   };
 
-  // Load from localStorage
+  // Load from localStorage & Cloud
   useEffect(() => {
     const saved = localStorage.getItem('chrono-goals');
     if (saved) {
@@ -67,15 +72,26 @@ export default function App() {
       setActiveGoalId(id);
       setSessionStartTime(start);
     }
+
+    const savedSyncKey = localStorage.getItem('chrono-sync-key');
+    if (savedSyncKey) {
+      setSyncKey(savedSyncKey);
+      setSyncKeyInput(savedSyncKey);
+      pullFromCloud(savedSyncKey);
+    }
+
     setIsLoaded(true);
   }, []);
 
-  // Save to localStorage
+  // Save to localStorage & Auto-Push to Cloud
   useEffect(() => {
     if (isLoaded) {
       localStorage.setItem('chrono-goals', JSON.stringify(goals));
+      if (syncKey && !isPulling.current) {
+        pushToCloud(syncKey, goals);
+      }
     }
-  }, [goals, isLoaded]);
+  }, [goals, isLoaded, syncKey]);
 
   useEffect(() => {
     if (isLoaded) {
@@ -277,19 +293,35 @@ export default function App() {
     setEditingSessionId(null);
   };
 
-  const handleImport = () => {
+  const pullFromCloud = async (key: string) => {
+    setIsSyncing(true);
     try {
-      const parsed = JSON.parse(importData);
-      if (Array.isArray(parsed)) {
-        setGoals(parsed);
-        setImportData('');
-        setShowSyncModal(false);
-        alert("Data imported successfully!");
-      } else {
-        alert("Invalid data format.");
+      const res = await fetch(`/api/sync/${key}`);
+      const json = await res.json();
+      if (json.success && json.data) {
+        isPulling.current = true;
+        setGoals(json.data);
+        setTimeout(() => isPulling.current = false, 100);
       }
     } catch (e) {
-      alert("Failed to parse data. Please check the format.");
+      console.error("Failed to pull from cloud", e);
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
+  const pushToCloud = async (key: string, data: Goal[]) => {
+    setIsSyncing(true);
+    try {
+      await fetch(`/api/sync/${key}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ data, updatedAt: Date.now() })
+      });
+    } catch (e) {
+      console.error("Failed to push to cloud", e);
+    } finally {
+      setIsSyncing(false);
     }
   };
 
@@ -351,10 +383,14 @@ export default function App() {
             )}
             <button 
               onClick={() => setShowSyncModal(true)}
-              className="flex items-center gap-2 text-white/50 hover:text-white transition-colors font-mono text-xs border border-white/10 px-3 py-1.5 rounded-lg bg-white/5"
+              className={`flex items-center gap-2 transition-colors font-mono text-xs border px-3 py-1.5 rounded-lg ${
+                syncKey 
+                  ? 'text-[#00E5FF] border-[#00E5FF]/30 bg-[#00E5FF]/10 hover:bg-[#00E5FF]/20' 
+                  : 'text-white/50 hover:text-white border-white/10 bg-white/5'
+              }`}
             >
-              <Database size={14} />
-              <span>DATA SYNC</span>
+              {isSyncing ? <RefreshCw size={14} className="animate-spin" /> : (syncKey ? <Cloud size={14} /> : <CloudOff size={14} />)}
+              <span>{syncKey ? 'CLOUD SYNCED' : 'CLOUD SYNC'}</span>
             </button>
           </div>
         </div>
@@ -424,26 +460,28 @@ export default function App() {
         )}
       </div>
 
+      {/* Go Back Up Button (Compact) */}
+      <AnimatePresence>
+        {currentParentId !== null && !showArchived && (
+          <motion.button
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            onClick={() => {
+              const current = goals.find(g => g.id === currentParentId);
+              setCurrentParentId(current?.parentId || null);
+            }}
+            className="w-full flex items-center justify-center gap-2 py-3 hardware-card rounded-xl text-white/50 hover:text-white hover:bg-white/5 transition-colors font-mono text-sm border-dashed"
+          >
+            <CornerLeftUp size={16} />
+            <span>GO BACK UP</span>
+          </motion.button>
+        )}
+      </AnimatePresence>
+
       {/* Goals Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <AnimatePresence mode="popLayout">
-          {currentParentId !== null && !showArchived && (
-            <motion.div
-              layout
-              initial={{ opacity: 0, scale: 0.9 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.9 }}
-              onClick={() => {
-                const current = goals.find(g => g.id === currentParentId);
-                setCurrentParentId(current?.parentId || null);
-              }}
-              className="hardware-card rounded-2xl p-6 flex flex-col items-center justify-center gap-4 cursor-pointer hover:bg-white/5 transition-colors border-dashed min-h-[300px]"
-            >
-              <CornerLeftUp size={32} className="text-white/30" />
-              <span className="font-mono text-sm text-white/50 uppercase tracking-widest">Go Back Up</span>
-            </motion.div>
-          )}
-
           {currentGoals.map(goal => {
             const isActive = activeGoalId === goal.id;
             const displaySeconds = getAggregateSeconds(goal.id);
@@ -686,8 +724,8 @@ export default function App() {
             >
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3 text-[#00E5FF]">
-                  <Database size={24} />
-                  <h2 className="text-2xl font-bold tracking-tight">DATA SYNCHRONIZATION</h2>
+                  <Cloud size={24} />
+                  <h2 className="text-2xl font-bold tracking-tight">CLOUD SYNCHRONIZATION</h2>
                 </div>
                 <button onClick={() => setShowSyncModal(false)} className="text-white/50 hover:text-white">
                   <X size={24} />
@@ -695,47 +733,64 @@ export default function App() {
               </div>
 
               <div className="bg-white/5 border border-white/10 rounded-xl p-4 font-mono text-xs text-white/70 leading-relaxed">
-                <strong className="text-white">How to sync PC & Mobile:</strong><br/>
-                Since this app runs securely in your browser without a central server, you can manually sync your data. 
-                Copy the Export Data below, send it to yourself (via KakaoTalk, Notes, or Email), and paste it into the Import section on your other device.
+                <strong className="text-white">How to sync PC & Mobile automatically:</strong><br/>
+                Enter a unique <strong>Secret Sync Key</strong> (e.g., your email or a secret phrase). 
+                Once linked, your data will automatically sync to the cloud whenever you make a change. 
+                Enter the exact same key on your other device to link them.
               </div>
 
-              <div className="space-y-2">
-                <label className="font-mono text-xs uppercase tracking-widest text-white/50">Export Data (Copy this)</label>
-                <div className="relative">
-                  <textarea 
-                    readOnly
-                    value={JSON.stringify(goals)}
-                    className="w-full h-24 bg-black border border-white/10 rounded-xl p-4 font-mono text-xs text-white/50 focus:outline-none resize-none"
-                  />
+              <div className="space-y-4">
+                <label className="font-mono text-xs uppercase tracking-widest text-white/50">Secret Sync Key</label>
+                <input 
+                  type="text"
+                  value={syncKeyInput}
+                  onChange={(e) => setSyncKeyInput(e.target.value)}
+                  placeholder="Enter a unique secret key..."
+                  className="w-full bg-black border border-white/10 rounded-xl p-4 font-mono text-sm text-white focus:outline-none focus:border-[#00E5FF] transition-colors"
+                />
+                
+                <div className="flex flex-col sm:flex-row gap-3">
                   <button 
                     onClick={() => {
-                      navigator.clipboard.writeText(JSON.stringify(goals));
-                      alert("Copied to clipboard!");
+                      localStorage.setItem('chrono-sync-key', syncKeyInput);
+                      setSyncKey(syncKeyInput);
+                      pullFromCloud(syncKeyInput);
+                      setShowSyncModal(false);
                     }}
-                    className="absolute top-2 right-2 bg-white/10 hover:bg-white/20 p-2 rounded-lg transition-colors text-white"
+                    disabled={!syncKeyInput.trim()}
+                    className="flex-1 py-3 rounded-xl font-bold bg-white/10 hover:bg-white/20 transition-colors disabled:opacity-50 flex items-center justify-center gap-2 text-sm"
                   >
-                    <Copy size={16} />
+                    <CloudDownload size={18} />
+                    <span>PULL FROM CLOUD</span>
+                  </button>
+                  <button 
+                    onClick={() => {
+                      localStorage.setItem('chrono-sync-key', syncKeyInput);
+                      setSyncKey(syncKeyInput);
+                      pushToCloud(syncKeyInput, goals);
+                      setShowSyncModal(false);
+                    }}
+                    disabled={!syncKeyInput.trim()}
+                    className="flex-1 py-3 rounded-xl font-bold bg-[#00E5FF] text-black hover:bg-[#00E5FF]/90 transition-colors disabled:opacity-50 flex items-center justify-center gap-2 text-sm"
+                  >
+                    <CloudUpload size={18} />
+                    <span>PUSH TO CLOUD</span>
                   </button>
                 </div>
-              </div>
 
-              <div className="space-y-2">
-                <label className="font-mono text-xs uppercase tracking-widest text-white/50">Import Data (Paste here)</label>
-                <textarea 
-                  value={importData}
-                  onChange={(e) => setImportData(e.target.value)}
-                  placeholder="Paste your exported JSON data here..."
-                  className="w-full h-24 bg-black border border-white/10 rounded-xl p-4 font-mono text-xs text-white focus:outline-none focus:border-[#00E5FF]/50 resize-none transition-colors"
-                />
-                <button 
-                  onClick={handleImport}
-                  disabled={!importData.trim()}
-                  className="w-full py-3 rounded-xl font-bold bg-[#00E5FF] text-black hover:bg-[#00E5FF]/90 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
-                >
-                  <Download size={18} />
-                  <span>OVERWRITE & IMPORT DATA</span>
-                </button>
+                {syncKey && (
+                  <button 
+                    onClick={() => {
+                      localStorage.removeItem('chrono-sync-key');
+                      setSyncKey('');
+                      setSyncKeyInput('');
+                    }}
+                    className="w-full py-3 mt-4 rounded-xl font-bold bg-red-500/20 text-red-400 hover:bg-red-500/30 transition-colors flex items-center justify-center gap-2 text-sm"
+                  >
+                    <CloudOff size={18} />
+                    <span>UNLINK DEVICE</span>
+                  </button>
+                )}
               </div>
             </motion.div>
           </motion.div>
