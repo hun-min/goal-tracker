@@ -561,6 +561,18 @@ export default function App() {
       <div className="flex flex-col gap-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2 text-white/50 font-mono text-sm overflow-x-auto pb-2 scrollbar-hide flex-1">
+            {currentParentId !== null && !showArchived && (
+              <button 
+                onClick={() => {
+                  const current = goals.find(g => g.id === currentParentId);
+                  setCurrentParentId(current?.parentId || null);
+                }}
+                className="hover:text-white transition-colors flex items-center justify-center w-6 h-6 rounded bg-white/10 shrink-0 mr-2"
+                title="Go Back Up"
+              >
+                <CornerLeftUp size={14} />
+              </button>
+            )}
             <button 
               onClick={() => setCurrentParentId(null)}
               className={`hover:text-white transition-colors flex items-center gap-1 shrink-0 ${currentParentId === null ? 'text-white' : ''}`}
@@ -615,25 +627,6 @@ export default function App() {
         )}
       </div>
 
-      {/* Go Back Up Button (Compact) */}
-      <AnimatePresence>
-        {currentParentId !== null && !showArchived && (
-          <motion.button
-            initial={{ opacity: 0, y: -10 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -10 }}
-            onClick={() => {
-              const current = goals.find(g => g.id === currentParentId);
-              setCurrentParentId(current?.parentId || null);
-            }}
-            className="w-full flex items-center justify-center gap-2 py-3 hardware-card rounded-xl text-white/50 hover:text-white hover:bg-white/5 transition-colors font-mono text-sm border-dashed"
-          >
-            <CornerLeftUp size={16} />
-            <span>GO BACK UP</span>
-          </motion.button>
-        )}
-      </AnimatePresence>
-
       {/* Goals Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <AnimatePresence mode="popLayout">
@@ -667,7 +660,7 @@ export default function App() {
                 <div className="relative z-10 flex flex-col h-full gap-4">
                   <div className="flex justify-between items-start">
                     <div className="flex-1 min-w-0 pr-4">
-                      <h3 className="text-2xl font-bold tracking-tight mb-1 flex items-center gap-2 group">
+                      <h3 className="text-2xl font-bold tracking-tight mb-1 flex items-start gap-2 group">
                         {editingGoalId === goal.id ? (
                           <input
                             autoFocus
@@ -680,17 +673,17 @@ export default function App() {
                           />
                         ) : (
                           <>
-                            <span className="truncate">{goal.name}</span>
+                            <span className="break-words flex-1">{goal.name}</span>
                             <button 
                               onClick={(e) => { e.stopPropagation(); startEditingGoal(goal); }}
-                              className="opacity-0 group-hover:opacity-100 transition-opacity text-white/30 hover:text-white p-1 shrink-0"
+                              className="opacity-0 group-hover:opacity-100 transition-opacity text-white/30 hover:text-white p-1 shrink-0 mt-1"
                             >
                               <Edit2 size={14} />
                             </button>
                           </>
                         )}
                         {childCount > 0 && editingGoalId !== goal.id && (
-                          <span className="text-[10px] bg-white/10 px-2 py-0.5 rounded-full text-white/60 font-mono shrink-0">
+                          <span className="text-[10px] bg-white/10 px-2 py-0.5 rounded-full text-white/60 font-mono shrink-0 mt-2">
                             {childCount} SUB
                           </span>
                         )}
