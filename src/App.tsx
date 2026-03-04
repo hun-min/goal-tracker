@@ -370,20 +370,22 @@ export default function App() {
         {children.map(goal => {
           const hasChildren = goals.some(g => g.parentId === goal.id && !g.isArchived);
           return (
-            <div key={goal.id} className="flex flex-col w-full">
+            <div key={goal.id} className="flex flex-col w-full min-w-0">
               <div 
-                className={`flex items-center justify-between py-2.5 px-3 hover:bg-white/10 cursor-pointer border-l-2 ${depth === 0 ? 'border-[#00E5FF]' : 'border-white/20'} transition-colors group`}
-                style={{ marginLeft: `${depth * 16}px` }}
+                className={`flex items-start justify-between py-2 px-2 sm:px-3 hover:bg-white/10 cursor-pointer border-l-2 ${depth === 0 ? 'border-[#00E5FF]' : 'border-white/20'} transition-colors group gap-2`}
+                style={{ marginLeft: `${depth * 12}px` }}
                 onClick={() => {
                   setCurrentParentId(hasChildren ? goal.id : goal.parentId);
                   setShowOverviewModal(false);
                 }}
               >
-                <div className="flex items-center gap-3">
-                  {hasChildren ? <FolderOpen size={14} className="text-[#00E5FF]" /> : <Activity size={14} className="text-white/40" />}
-                  <span className="text-white/80 font-mono text-sm group-hover:text-white">{goal.name}</span>
+                <div className="flex items-start gap-2 min-w-0 flex-1">
+                  <div className="shrink-0 mt-0.5">
+                    {hasChildren ? <FolderOpen size={14} className="text-[#00E5FF]" /> : <Activity size={14} className="text-white/40" />}
+                  </div>
+                  <span className="text-white/80 font-mono text-xs sm:text-sm group-hover:text-white break-keep break-words leading-tight">{goal.name}</span>
                 </div>
-                <span className="text-[#00E5FF] font-mono text-xs">
+                <span className="text-[#00E5FF] font-mono text-xs shrink-0 ml-2 whitespace-nowrap pt-0.5">
                   {formatTime(getAggregateSeconds(goal.id))}
                 </span>
               </div>
@@ -454,7 +456,7 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen p-6 md:p-12 max-w-5xl mx-auto flex flex-col gap-8 pb-32">
+    <div className="min-h-screen p-4 sm:p-6 md:p-12 max-w-5xl mx-auto flex flex-col gap-6 sm:gap-8 pb-32 overflow-x-hidden">
       
       {/* Day Cycle Progress */}
       <div className="w-full hardware-card rounded-xl p-4 flex flex-col gap-4 border-t-2 border-t-[#00E5FF]">
@@ -549,7 +551,7 @@ export default function App() {
             </button>
           </div>
         </div>
-        <h1 className="text-5xl md:text-7xl font-extrabold tracking-tighter">
+        <h1 className="text-4xl sm:text-5xl md:text-7xl font-extrabold tracking-tighter">
           TIME <span className="text-white/20">CANVAS</span>
         </h1>
         <p className="text-white/50 font-mono text-sm mt-2">
@@ -607,20 +609,21 @@ export default function App() {
         </div>
 
         {!showArchived && (
-          <form onSubmit={handleAddGoal} className="flex gap-4">
+          <form onSubmit={handleAddGoal} className="flex gap-2 sm:gap-4">
             <input
               type="text"
               value={newGoalName}
               onChange={(e) => setNewGoalName(e.target.value)}
               placeholder={currentParentId ? "Add a sub-task..." : "What do you want to master? (e.g., Work, Exercise)"}
-              className="flex-1 bg-[#151619] border border-white/10 rounded-xl px-6 py-4 text-lg focus:outline-none focus:border-white/30 transition-colors font-sans"
+              className="flex-1 min-w-0 bg-[#151619] border border-white/10 rounded-xl px-4 sm:px-6 py-3 sm:py-4 text-base sm:text-lg focus:outline-none focus:border-white/30 transition-colors font-sans"
             />
             <button 
               type="submit"
               disabled={!newGoalName.trim()}
-              className="bg-white text-black px-8 py-4 rounded-xl font-bold flex items-center gap-2 hover:bg-white/90 disabled:opacity-50 transition-all shrink-0"
+              className="bg-white text-black px-4 sm:px-8 py-3 sm:py-4 rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-white/90 disabled:opacity-50 transition-all shrink-0"
             >
-              <Plus size={24} />
+              <Plus size={20} className="sm:hidden" />
+              <Plus size={24} className="hidden sm:block" />
               <span className="hidden sm:inline">Initialize</span>
             </button>
           </form>
@@ -658,37 +661,43 @@ export default function App() {
                 )}
 
                 <div className="relative z-10 flex flex-col h-full gap-4">
-                  <div className="flex justify-between items-start">
-                    <div className="flex-1 min-w-0 pr-4">
-                      <h3 className="text-2xl font-bold tracking-tight mb-1 flex items-start gap-2 group">
-                        {editingGoalId === goal.id ? (
-                          <input
-                            autoFocus
-                            type="text"
-                            value={editingGoalName}
-                            onChange={(e) => setEditingGoalName(e.target.value)}
-                            onBlur={() => saveGoalName(goal.id)}
-                            onKeyDown={(e) => e.key === 'Enter' && saveGoalName(goal.id)}
-                            className="bg-black/50 border border-[#00E5FF]/50 rounded px-2 py-1 w-full text-white focus:outline-none text-xl"
-                          />
-                        ) : (
-                          <>
-                            <span className="break-words flex-1">{goal.name}</span>
+                  <div className="flex justify-between items-start gap-2">
+                    <div className="flex-1 min-w-0 pr-2">
+                      <div className="flex items-start justify-between gap-2 mb-2 group">
+                        <div className="flex-1 min-w-0">
+                          {editingGoalId === goal.id ? (
+                            <input
+                              autoFocus
+                              type="text"
+                              value={editingGoalName}
+                              onChange={(e) => setEditingGoalName(e.target.value)}
+                              onBlur={() => saveGoalName(goal.id)}
+                              onKeyDown={(e) => e.key === 'Enter' && saveGoalName(goal.id)}
+                              className="bg-black/50 border border-[#00E5FF]/50 rounded px-2 py-1 w-full text-white focus:outline-none text-xl"
+                            />
+                          ) : (
+                            <h3 className="text-xl sm:text-2xl font-bold tracking-tight break-keep break-words leading-tight text-white">
+                              {goal.name}
+                            </h3>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0 mt-1">
+                          {childCount > 0 && editingGoalId !== goal.id && (
+                            <span className="text-[10px] bg-white/10 px-2 py-0.5 rounded-full text-white/60 font-mono">
+                              {childCount} SUB
+                            </span>
+                          )}
+                          {editingGoalId !== goal.id && (
                             <button 
                               onClick={(e) => { e.stopPropagation(); startEditingGoal(goal); }}
-                              className="opacity-0 group-hover:opacity-100 transition-opacity text-white/30 hover:text-white p-1 shrink-0 mt-1"
+                              className="opacity-0 group-hover:opacity-100 transition-opacity text-white/30 hover:text-white p-1"
                             >
                               <Edit2 size={14} />
                             </button>
-                          </>
-                        )}
-                        {childCount > 0 && editingGoalId !== goal.id && (
-                          <span className="text-[10px] bg-white/10 px-2 py-0.5 rounded-full text-white/60 font-mono shrink-0 mt-2">
-                            {childCount} SUB
-                          </span>
-                        )}
-                      </h3>
-                      <div className="flex items-center gap-2 text-white/40 font-mono text-xs uppercase tracking-wider">
+                          )}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2 text-white/40 font-mono text-[10px] sm:text-xs uppercase tracking-wider">
                         <Clock size={12} />
                         <span>Created {new Date(goal.createdAt).toLocaleDateString()}</span>
                       </div>
@@ -813,23 +822,25 @@ export default function App() {
             initial={{ y: 100, opacity: 0 }}
             animate={{ y: 0, opacity: 1 }}
             exit={{ y: 100, opacity: 0 }}
-            className="fixed bottom-8 left-1/2 -translate-x-1/2 hardware-card rounded-full px-8 py-4 flex items-center gap-6 z-50 border border-white/10 whitespace-nowrap"
-            style={{ boxShadow: `0 10px 40px -10px ${activeGoal.color}40` }}
+            className="fixed bottom-6 left-4 right-4 sm:left-1/2 sm:right-auto sm:-translate-x-1/2 hardware-card rounded-2xl sm:rounded-full px-4 sm:px-6 py-3 flex items-center justify-between gap-4 z-50 border border-white/10 shadow-2xl"
+            style={{ boxShadow: `0 10px 40px -10px ${activeGoal.color}60` }}
           >
-            <div className="flex items-center gap-3">
-              <div className="w-3 h-3 rounded-full animate-pulse" style={{ backgroundColor: activeGoal.color, boxShadow: `0 0 10px ${activeGoal.color}` }} />
-              <span className="font-bold tracking-tight truncate max-w-[150px] sm:max-w-[300px]">{activeGoal.name}</span>
+            <div className="flex items-center gap-3 min-w-0 flex-1">
+              <div className="w-2.5 h-2.5 rounded-full animate-pulse shrink-0" style={{ backgroundColor: activeGoal.color, boxShadow: `0 0 10px ${activeGoal.color}` }} />
+              <span className="font-bold tracking-tight truncate text-sm sm:text-base text-white">{activeGoal.name}</span>
             </div>
-            <div className="w-px h-6 bg-white/10" />
-            <div className="timer-display text-2xl" style={{ color: activeGoal.color }}>
-              {formatTime(getAggregateSeconds(activeGoal.id))}
+            <div className="flex items-center gap-3 sm:gap-4 shrink-0">
+              <div className="timer-display text-xl sm:text-2xl font-light tracking-wider" style={{ color: activeGoal.color }}>
+                {formatTime(getAggregateSeconds(activeGoal.id))}
+              </div>
+              <div className="w-px h-6 bg-white/10 hidden sm:block" />
+              <button 
+                onClick={stopTimer}
+                className="bg-white/10 hover:bg-white/20 p-2.5 rounded-xl sm:rounded-full transition-colors flex items-center justify-center shrink-0"
+              >
+                <Square size={16} fill="white" color="white" />
+              </button>
             </div>
-            <button 
-              onClick={stopTimer}
-              className="ml-4 bg-white/10 hover:bg-white/20 p-2 rounded-full transition-colors"
-            >
-              <Square size={16} fill="currentColor" />
-            </button>
           </motion.div>
         )}
       </AnimatePresence>
