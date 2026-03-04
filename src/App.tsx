@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Play, Square, Plus, Trash2, Clock, Activity, FolderOpen, ChevronRight, Home, CornerLeftUp, Archive, ArchiveRestore, AlertTriangle, Database, X, Copy, Download, History, Edit2, MonitorSmartphone, Cloud, CloudOff, CloudDownload, CloudUpload, RefreshCw, Layers } from 'lucide-react';
 import { Goal } from './types';
 import { db } from './firebase';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { doc, getDoc, setDoc, onSnapshot } from 'firebase/firestore';
 
 const COLORS = ['#00FF00', '#00E5FF', '#FF00FF', '#FFAA00', '#FF4444'];
 
@@ -12,6 +12,7 @@ export default function App() {
   const [activeGoalId, setActiveGoalId] = useState<string | null>(null);
   const [sessionStartTime, setSessionStartTime] = useState<number | null>(null);
   const [now, setNow] = useState<number>(Date.now());
+  const [lastTimerUpdate, setLastTimerUpdate] = useState<number>(Date.now());
   const [newGoalName, setNewGoalName] = useState('');
   const [isLoaded, setIsLoaded] = useState(false);
   const [currentParentId, setCurrentParentId] = useState<string | null>(null);
@@ -36,6 +37,8 @@ export default function App() {
   const [syncKeyInput, setSyncKeyInput] = useState<string>('');
   const [isSyncing, setIsSyncing] = useState(false);
   const isPulling = React.useRef(false);
+  const syncUnsubscribe = React.useRef<() => void>(null);
+  const lastSyncUpdate = React.useRef<number>(0);
 
   // PWA Install Prompt
   useEffect(() => {
@@ -84,7 +87,7 @@ export default function App() {
     if (savedSyncKey) {
       setSyncKey(savedSyncKey);
       setSyncKeyInput(savedSyncKey);
-      pullFromCloud(savedSyncKey);
+      setupRealtimeSync(savedSyncKey);
     }
 
     setIsLoaded(true);
@@ -107,15 +110,35 @@ export default function App() {
 
   // Timer tick & Visibility Change (Background optimization)
   useEffect(() => {
-    const interval = setInterval(() => setNow(Date.now()), 1000);
+    let interval: NodeJS.Timeout | null = null;
+    
+    // Only run the interval if the document is visible
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
-        setNow(Date.now());
+        const currentTime = Date.now();
+        setNow(currentTime);
+        setLastTimerUpdate(currentTime);
+        // Restart interval
+        if (!interval) {
+          interval = setInterval(() => setNow(Date.now()), 1000);
+        }
+      } else {
+        // Stop interval when hidden to save battery (background loop stops)
+        if (interval) {
+          clearInterval(interval);
+          interval = null;
+        }
       }
     };
+
+    // Initial check
+    if (document.visibilityState === 'visible') {
+      interval = setInterval(() => setNow(Date.now()), 1000);
+    }
+
     document.addEventListener('visibilitychange', handleVisibilityChange);
     return () => {
-      clearInterval(interval);
+      if (interval) clearInterval(interval);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
   }, []);
@@ -306,14 +329,24 @@ export default function App() {
     setEditingSessionId(null);
   };
 
-  const pullFromCloud = async (key: string) => {
+  const setupRealtimeSync = (key: string) => {
+    if (syncUnsubscribe.current) {
+      syncUnsubscribe.current();
+    }
+    
     setIsSyncing(true);
-    try {
-      const docRef = doc(db, "user_sync", key);
-      const docSnap = await getDoc(docRef);
-      
+    const docRef = doc(db, "user_sync", key);
+    
+    const unsubscribe = onSnapshot(docRef, (docSnap) => {
       if (docSnap.exists()) {
         const json = docSnap.data();
+        
+        // Skip updates if they were triggered by our own push in the last few seconds
+        // OR if the update has pending local writes (Firebase native metadata check)
+        if (docSnap.metadata.hasPendingWrites || Date.now() - lastSyncUpdate.current < 2000) {
+           return;
+        }
+        
         if (json.data) {
           isPulling.current = true;
           if (Array.isArray(json.data)) {
@@ -323,20 +356,23 @@ export default function App() {
             setActiveGoalId(json.data.activeGoalId || null);
             setSessionStartTime(json.data.sessionStartTime || null);
           }
-          setTimeout(() => isPulling.current = false, 100);
+          // Debounce pulling flag release
+          setTimeout(() => isPulling.current = false, 1000);
         }
       }
-    } catch (e) {
-      console.error("Failed to pull from Firebase", e);
-      alert("Firebase sync failed. Please check your Firestore rules.");
-    } finally {
       setIsSyncing(false);
-    }
+    }, (error) => {
+      console.error("Firebase sync error:", error);
+      setIsSyncing(false);
+    });
+    
+    syncUnsubscribe.current = unsubscribe;
   };
 
   const pushToCloud = async (key: string, data: Goal[], activeId: string | null, startTime: number | null) => {
     setIsSyncing(true);
     try {
+      lastSyncUpdate.current = Date.now();
       const docRef = doc(db, "user_sync", key);
       await setDoc(docRef, {
         data: { goals: data, activeGoalId: activeId, sessionStartTime: startTime },
@@ -933,19 +969,20 @@ export default function App() {
                     onClick={() => {
                       localStorage.setItem('chrono-sync-key', syncKeyInput);
                       setSyncKey(syncKeyInput);
-                      pullFromCloud(syncKeyInput);
+                      setupRealtimeSync(syncKeyInput);
                       setShowSyncModal(false);
                     }}
                     disabled={!syncKeyInput.trim()}
                     className="flex-1 py-3 rounded-xl font-bold bg-white/10 hover:bg-white/20 transition-colors disabled:opacity-50 flex items-center justify-center gap-2 text-sm"
                   >
                     <CloudDownload size={18} />
-                    <span>PULL FROM CLOUD</span>
+                    <span>START SYNC</span>
                   </button>
                   <button 
                     onClick={() => {
                       localStorage.setItem('chrono-sync-key', syncKeyInput);
                       setSyncKey(syncKeyInput);
+                      setupRealtimeSync(syncKeyInput);
                       pushToCloud(syncKeyInput, goals, activeGoalId, sessionStartTime);
                       setShowSyncModal(false);
                     }}
@@ -953,13 +990,14 @@ export default function App() {
                     className="flex-1 py-3 rounded-xl font-bold bg-[#00E5FF] text-black hover:bg-[#00E5FF]/90 transition-colors disabled:opacity-50 flex items-center justify-center gap-2 text-sm"
                   >
                     <CloudUpload size={18} />
-                    <span>PUSH TO CLOUD</span>
+                    <span>OVERWRITE CLOUD</span>
                   </button>
                 </div>
 
                 {syncKey && (
                   <button 
                     onClick={() => {
+                      if (syncUnsubscribe.current) syncUnsubscribe.current();
                       localStorage.removeItem('chrono-sync-key');
                       setSyncKey('');
                       setSyncKeyInput('');
