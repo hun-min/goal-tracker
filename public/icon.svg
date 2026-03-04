@@ -1,0 +1,47 @@
+<svg width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="12" result="blur" />
+      <feComposite in="SourceGraphic" in2="blur" operator="over" />
+    </filter>
+  </defs>
+  <rect width="512" height="512" rx="112" fill="#0a0a0a"/>
+  <rect x="16" y="16" width="480" height="480" rx="96" fill="#151619" stroke="#ffffff" stroke-opacity="0.05" stroke-width="4"/>
+  
+  <g transform="translate(136, 136)">
+    <!-- Row 0 -->
+    <circle cx="0" cy="0" r="16" fill="#00E5FF" filter="url(#glow)"/>
+    <circle cx="60" cy="0" r="16" fill="#00E5FF" filter="url(#glow)"/>
+    <circle cx="120" cy="0" r="16" fill="#00E5FF" filter="url(#glow)"/>
+    <circle cx="180" cy="0" r="16" fill="#00E5FF" filter="url(#glow)"/>
+    <circle cx="240" cy="0" r="16" fill="#00E5FF" filter="url(#glow)"/>
+    
+    <!-- Row 1 -->
+    <circle cx="0" cy="60" r="16" fill="#ffffff" fill-opacity="0.05"/>
+    <circle cx="60" cy="60" r="16" fill="#00E5FF" filter="url(#glow)"/>
+    <circle cx="120" cy="60" r="16" fill="#00E5FF" filter="url(#glow)"/>
+    <circle cx="180" cy="60" r="16" fill="#00E5FF" filter="url(#glow)"/>
+    <circle cx="240" cy="60" r="16" fill="#ffffff" fill-opacity="0.05"/>
+    
+    <!-- Row 2 -->
+    <circle cx="0" cy="120" r="16" fill="#ffffff" fill-opacity="0.05"/>
+    <circle cx="60" cy="120" r="16" fill="#ffffff" fill-opacity="0.05"/>
+    <circle cx="120" cy="120" r="16" fill="#00E5FF" filter="url(#glow)"/>
+    <circle cx="180" cy="120" r="16" fill="#ffffff" fill-opacity="0.05"/>
+    <circle cx="240" cy="120" r="16" fill="#ffffff" fill-opacity="0.05"/>
+    
+    <!-- Row 3 -->
+    <circle cx="0" cy="180" r="16" fill="#ffffff" fill-opacity="0.05"/>
+    <circle cx="60" cy="180" r="16" fill="#00FF00" filter="url(#glow)"/>
+    <circle cx="120" cy="180" r="16" fill="#00FF00" filter="url(#glow)"/>
+    <circle cx="180" cy="180" r="16" fill="#00FF00" filter="url(#glow)"/>
+    <circle cx="240" cy="180" r="16" fill="#ffffff" fill-opacity="0.05"/>
+    
+    <!-- Row 4 -->
+    <circle cx="0" cy="240" r="16" fill="#00FF00" filter="url(#glow)"/>
+    <circle cx="60" cy="240" r="16" fill="#00FF00" filter="url(#glow)"/>
+    <circle cx="120" cy="240" r="16" fill="#00FF00" filter="url(#glow)"/>
+    <circle cx="180" cy="240" r="16" fill="#00FF00" filter="url(#glow)"/>
+    <circle cx="240" cy="240" r="16" fill="#00FF00" filter="url(#glow)"/>
+  </g>
+</svg>

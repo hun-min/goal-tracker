@@ -1,0 +1,5 @@
+{
+  "name": "Time Canvas",
+  "description": "A precision hardware-style tracker to visualize time invested in your goals.",
+  "requestFramePermissions": []
+}

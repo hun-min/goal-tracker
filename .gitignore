@@ -1,8 +1,8 @@
-node_modules
-.env.local
-.vercel
-<<<<<<< HEAD
-
-.vercel
-=======
->>>>>>> c80846d0dffc9923b80a9e82d3dd25f20e21a9db
+node_modules/
+build/
+dist/
+coverage/
+.DS_Store
+*.log
+.env*
+!.env.example

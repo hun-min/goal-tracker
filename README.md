@@ -1,27 +1,20 @@
-# Goal Tracker 배포 가이드
+<div align="center">
+<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
+</div>
 
-## 1. Dropbox 앱 설정 완료 후
+# Run and deploy your AI Studio app
 
-1. `.env.local` 파일을 열고 Dropbox App Key와 App Secret을 입력하세요
-2. 의존성 설치: `npm install`
-3. 로컬 테스트: `npm run dev`
+This contains everything you need to run your app locally.
 
-## 2. Vercel 배포
+View your app in AI Studio: https://ai.studio/apps/3fc39a22-b331-4b8e-843f-bdf412ed3828
 
-1. GitHub에 코드 푸시
-2. Vercel 접속: https://vercel.com
-3. "Import Project" 클릭
-4. GitHub 저장소 선택
-5. Environment Variables 설정:
-   - `DROPBOX_APP_KEY`: Dropbox App Key
-   - `DROPBOX_APP_SECRET`: Dropbox App Secret
-6. Deploy 클릭
+## Run Locally
 
-## 3. 배포 후 Dropbox 설정 업데이트
+**Prerequisites:**  Node.js
 
-1. Dropbox 개발자 콘솔로 돌아가기
-2. Settings 탭 > Redirect URIs에 추가:
-   - `https://your-app.vercel.app/api/dropbox/callback`
-3. Save 클릭
 
-완료!
+1. Install dependencies:
+   `npm install`
+2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
+3. Run the app:
+   `npm run dev`
